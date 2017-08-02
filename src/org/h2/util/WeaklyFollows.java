@@ -56,7 +56,15 @@ public class WeaklyFollows {
 			
 			@Override
 			public int compareTo(LogEvent e2) {
-				return (int)(time - e2.time);
+				if (time - e2.time < 0){
+					return -1;
+				}else{
+					if (time - e2.time > 0){
+						return 1;
+					}else{
+						return 0;
+					}
+				}
 			}
 		}
 		

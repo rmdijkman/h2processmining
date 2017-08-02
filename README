@@ -1,3 +1,17 @@
+# H2 Database Engine for Process Mining
+
+An implementation of the [H2 Database Engine](http://www.h2database.com/) that includes a [weakly follows relation](https://doi.org/10.1109/TKDE.2004.47), which can be used for process mining.
+
+# Use
+
+The package nl.tue.is.weaklyfollows.test contains examples of the use of the weakly follows relation. The package includes performance tests that are based on logs from the BPI Challenges:
+- The log from the [BPI 2011 Challenge](https://doi.org/10.4121/uuid:d9769f3d-0ab0-4fb8-803b-0d1120ffcf54)
+- The log from the [BPI 2012 Challenge](https://doi.org/10.4121/uuid:3926db30-f712-4394-aebc-75976070e91f)
+
+# Changes
+
+Compared to the vanilla H2 code, this database engine includes the following changes. 
+
 org.h2.util.WeaklyFollows
 	An implementation of the weakly follows relation.
 nl.tue.is.weaklyfollows.test
