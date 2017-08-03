@@ -15,7 +15,7 @@ public class PerformanceWeaklyFollows {
 
 	public PerformanceWeaklyFollows() throws ClassNotFoundException, SQLException{
 		Class.forName("org.h2.Driver");
-		conn = DriverManager.getConnection("jdbc:h2:~/performancedb", "sa", "");
+		conn = DriverManager.getConnection("jdbc:h2:~/performancedb;CACHE_SIZE=8388608;PAGE_SIZE=512", "sa", "");
 		stat = conn.createStatement();
 	}
 	
@@ -56,6 +56,13 @@ public class PerformanceWeaklyFollows {
 	}
 
 	public void loadBPI2011() throws SQLException{
+		stat.execute("CREATE TABLE IF NOT EXISTS BPI2011 "
+				+ "AS SELECT "
+				+ "CaseID,"
+				+ "Activity,"
+				+ "convert(parseDateTime(CompleteTimestamp,'yyyy/MM/dd hh:mm:ss'),TIMESTAMP) AS CompleteTimestamp "
+				+ "FROM CSVREAD('./resources/BPI2011.csv', null, 'fieldSeparator=;');");
+		
 		stat.execute("CREATE TABLE IF NOT EXISTS BPI2011INDEXED "
 				+ "AS SELECT "
 				+ "CaseID,"
@@ -121,6 +128,8 @@ public class PerformanceWeaklyFollows {
 	public static void main(String[] args) throws ClassNotFoundException, SQLException {	
 		PerformanceWeaklyFollows test = new PerformanceWeaklyFollows();
 
+		test.printResultSet(test.executeQuery("SELECT * FROM INFORMATION_SCHEMA.SETTINGS WHERE NAME = 'info.CACHE_MAX_SIZE'"));
+		
 		test.loadBPI2011();
 		test.printTableSize("BPI2011INDEXED");
 		test.loadBPI2012();
@@ -129,15 +138,11 @@ public class PerformanceWeaklyFollows {
 		//test.printTableDefinition("BPI2012");		
 		//test.printResultSet(test.executeQuery("SELECT * FROM BPI2012"));
 
-		//Note that the first query may take substantially longer, due to caching of tables.
-		//For fair measurements, it is therefore good to execute twice and only measure the second execution.
-		/*
-		System.out.println("Measuring the time taken to execute the weakly follows relation on the indexed BPI 2012 log ...");
+		System.out.println("Measuring the time taken to execute the weakly follows relation on the indexed indexed BPI 2012  log ...");
 		test.startTimeMeasurement();
 		test.executeQuery("SELECT * FROM FOLLOWS(SELECT caseid,activity,completetimestamp FROM BPI2012INDEXED)");
 		test.printTimeTaken();
 
-		
 		System.out.println("Measuring the time taken to execute a nested query to get the weakly follows relation on the indexed BPI 2012 log ...");
 		test.startTimeMeasurement();
 		test.executeQuery(
@@ -150,13 +155,11 @@ public class PerformanceWeaklyFollows {
 				+ "    WHERE c.CaseID = a.CaseID AND a.CompleteTimestamp < c.CompleteTimestamp AND c.CompleteTimestamp < b.CompleteTimestamp"
 				+ "  );");
 		test.printTimeTaken();		
-		*/
 
-		System.out.println("Measuring the time taken to execute the weakly follows relation on the BPI 2011 log ...");
+		System.out.println("Measuring the time taken to execute the weakly follows relation on the indexed BPI 2011 log ...");
 		test.startTimeMeasurement();
 		test.executeQuery("SELECT * FROM FOLLOWS(SELECT caseid,activity,completetimestamp FROM BPI2011INDEXED)");
 		test.printTimeTaken();
-
 		
 		System.out.println("Measuring the time taken to execute a nested query to get the weakly follows relation on the indexed BPI 2011 log ...");
 		test.startTimeMeasurement();
@@ -167,6 +170,32 @@ public class PerformanceWeaklyFollows {
 				+ "  NOT EXISTS("
 				+ "    SELECT * "
 				+ "    FROM BPI2011INDEXED c "
+				+ "    WHERE c.CaseID = a.CaseID AND a.CompleteTimestamp < c.CompleteTimestamp AND c.CompleteTimestamp < b.CompleteTimestamp"
+				+ "  );");
+		test.printTimeTaken();		
+
+		System.out.println("Measuring the time taken to execute a nested query to get the weakly follows relation on the BPI 2012 log ...");
+		test.startTimeMeasurement();
+		test.executeQuery(
+				"  SELECT DISTINCT a.Activity, b.Activity "
+				+ "FROM BPI2012 a, BPI2012 b "
+				+ "WHERE a.CaseID = b.CaseID AND a.CompleteTimestamp < b.CompleteTimestamp AND "
+				+ "  NOT EXISTS("
+				+ "    SELECT * "
+				+ "    FROM BPI2012 c "
+				+ "    WHERE c.CaseID = a.CaseID AND a.CompleteTimestamp < c.CompleteTimestamp AND c.CompleteTimestamp < b.CompleteTimestamp"
+				+ "  );");
+		test.printTimeTaken();		
+
+		System.out.println("Measuring the time taken to execute a nested query to get the weakly follows relation on the BPI 2011 log ...");
+		test.startTimeMeasurement();
+		test.executeQuery(
+				"  SELECT DISTINCT a.Activity, b.Activity "
+				+ "FROM BPI2011 a, BPI2011 b "
+				+ "WHERE a.CaseID = b.CaseID AND a.CompleteTimestamp < b.CompleteTimestamp AND "
+				+ "  NOT EXISTS("
+				+ "    SELECT * "
+				+ "    FROM BPI2011 c "
 				+ "    WHERE c.CaseID = a.CaseID AND a.CompleteTimestamp < c.CompleteTimestamp AND c.CompleteTimestamp < b.CompleteTimestamp"
 				+ "  );");
 		test.printTimeTaken();		
