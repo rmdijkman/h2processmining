@@ -15,7 +15,7 @@ public class PerformanceWeaklyFollows {
 
 	public PerformanceWeaklyFollows() throws ClassNotFoundException, SQLException{
 		Class.forName("org.h2.Driver");
-		conn = DriverManager.getConnection("jdbc:h2:~/performancedb;CACHE_SIZE=8388608;PAGE_SIZE=512", "sa", "");
+		conn = DriverManager.getConnection("jdbc:h2:mem:", "sa", "");
 		stat = conn.createStatement();
 	}
 	
@@ -24,54 +24,27 @@ public class PerformanceWeaklyFollows {
 		conn.close();
 	}
 	
-	public void loadBPI2012() throws SQLException{
-		stat.execute("CREATE TABLE IF NOT EXISTS BPI2012 "
-				+ "AS SELECT "
+	public void loadLog(String logName) throws SQLException{
+		stat.execute("CREATE TABLE IF NOT EXISTS " + logName
+				+ " AS SELECT "
 				+ "CaseID,"
 				+ "Activity,"
 				+ "Resource,"
 				+ "convert(parseDateTime(CompleteTimestamp,'yyyy/MM/dd hh:mm:ss'),TIMESTAMP) AS CompleteTimestamp,"
 				+ "Variant,"
-				+ "VariantIndex,"
-				+ "AmountReq,"
-				+ "Name,"
-				+ "LifecycleTransition "
-				+ "FROM CSVREAD('./resources/BPI2012.csv', null, 'fieldSeparator=;');");
+				+ "VariantIndex "
+				+ "FROM CSVREAD('./resources/"+logName+".csv', null, 'fieldSeparator=;');");
+		stat.execute("CREATE INDEX IF NOT EXISTS CaseID_idx ON "+logName+"(CaseID)");
+		stat.execute("CREATE INDEX IF NOT EXISTS Activity_idx ON "+logName+"(Activity)");
+		stat.execute("CREATE INDEX IF NOT EXISTS CompleteTimestamp_idx ON "+logName+"(CompleteTimestamp)");
 
-		stat.execute("CREATE TABLE IF NOT EXISTS BPI2012INDEXED "
-				+ "AS SELECT "
-				+ "CaseID,"
-				+ "Activity,"
-				+ "Resource,"
-				+ "convert(parseDateTime(CompleteTimestamp,'yyyy/MM/dd hh:mm:ss'),TIMESTAMP) AS CompleteTimestamp,"
-				+ "Variant,"
-				+ "VariantIndex,"
-				+ "AmountReq,"
-				+ "Name,"
-				+ "LifecycleTransition "
-				+ "FROM CSVREAD('./resources/BPI2012.csv', null, 'fieldSeparator=;');");
-		stat.execute("CREATE INDEX IF NOT EXISTS CaseID_idx ON BPI2012INDEXED(CaseID)");
-		stat.execute("CREATE INDEX IF NOT EXISTS Activity_idx ON BPI2012INDEXED(Activity)");
-		stat.execute("CREATE INDEX IF NOT EXISTS CompleteTimestamp_idx ON BPI2012INDEXED(CompleteTimestamp)");
-	}
-
-	public void loadBPI2011() throws SQLException{
-		stat.execute("CREATE TABLE IF NOT EXISTS BPI2011 "
-				+ "AS SELECT "
-				+ "CaseID,"
-				+ "Activity,"
-				+ "convert(parseDateTime(CompleteTimestamp,'yyyy/MM/dd hh:mm:ss'),TIMESTAMP) AS CompleteTimestamp "
-				+ "FROM CSVREAD('./resources/BPI2011.csv', null, 'fieldSeparator=;');");
-		
-		stat.execute("CREATE TABLE IF NOT EXISTS BPI2011INDEXED "
-				+ "AS SELECT "
-				+ "CaseID,"
-				+ "Activity,"
-				+ "convert(parseDateTime(CompleteTimestamp,'yyyy/MM/dd hh:mm:ss'),TIMESTAMP) AS CompleteTimestamp "
-				+ "FROM CSVREAD('./resources/BPI2011.csv', null, 'fieldSeparator=;');");
-		stat.execute("CREATE INDEX IF NOT EXISTS CaseID_idx ON BPI2011INDEXED(CaseID)");
-		stat.execute("CREATE INDEX IF NOT EXISTS Activity_idx ON BPI2011INDEXED(Activity)");
-		stat.execute("CREATE INDEX IF NOT EXISTS CompleteTimestamp_idx ON BPI2011INDEXED(CompleteTimestamp)");
+		//Execute a simple query first, because otherwise the indexes do not seem to be initialized, 
+		//which causes a very slow response in the nested query.
+		stat.executeQuery(
+				"  SELECT DISTINCT a.Activity, b.Activity "
+				+ "FROM "+logName+" a, "+logName+" b "
+				+ "WHERE a.CaseID = b.CaseID AND a.CompleteTimestamp < b.CompleteTimestamp"
+				);
 	}
 
 	public void printTableDefinition(String tableName) throws SQLException{
@@ -125,77 +98,32 @@ public class PerformanceWeaklyFollows {
 		System.out.println("\ttime taken: " + (endTime - startTime) + " ms.");
 	}
 	
-	public static void main(String[] args) throws ClassNotFoundException, SQLException {	
+	public static void main(String[] args) throws ClassNotFoundException, SQLException {
+		if (args.length < 1){
+			System.out.println("Provide the event log that must be loaded as an argument, e.g.: BPI2011.");
+			System.exit(0);
+		}
+		String logName = args[0];
+		
 		PerformanceWeaklyFollows test = new PerformanceWeaklyFollows();
 
-		test.printResultSet(test.executeQuery("SELECT * FROM INFORMATION_SCHEMA.SETTINGS WHERE NAME = 'info.CACHE_MAX_SIZE'"));
-		
-		test.loadBPI2011();
-		test.printTableSize("BPI2011INDEXED");
-		test.loadBPI2012();
-		test.printTableSize("BPI2012INDEXED");
+		test.loadLog(logName);
+		test.printTableSize(logName);
 
-		//test.printTableDefinition("BPI2012");		
-		//test.printResultSet(test.executeQuery("SELECT * FROM BPI2012"));
-
-		System.out.println("Measuring the time taken to execute the weakly follows relation on the indexed indexed BPI 2012  log ...");
+		System.out.println("Measuring the time taken to execute the weakly follows relation on the "+logName+" log ...");
 		test.startTimeMeasurement();
-		test.executeQuery("SELECT * FROM FOLLOWS(SELECT caseid,activity,completetimestamp FROM BPI2012INDEXED)");
+		test.executeQuery("SELECT * FROM FOLLOWS(SELECT caseid,activity,completetimestamp FROM " + logName + ")");
 		test.printTimeTaken();
 
-		System.out.println("Measuring the time taken to execute a nested query to get the weakly follows relation on the indexed BPI 2012 log ...");
+		System.out.println("Measuring the time taken to execute a nested query to get the weakly follows relation on the "+logName+" log ...");
 		test.startTimeMeasurement();
 		test.executeQuery(
 				"  SELECT DISTINCT a.Activity, b.Activity "
-				+ "FROM BPI2012INDEXED a, BPI2012INDEXED b "
+				+ "FROM "+logName+" a, "+logName+" b "
 				+ "WHERE a.CaseID = b.CaseID AND a.CompleteTimestamp < b.CompleteTimestamp AND "
 				+ "  NOT EXISTS("
 				+ "    SELECT * "
-				+ "    FROM BPI2012INDEXED c "
-				+ "    WHERE c.CaseID = a.CaseID AND a.CompleteTimestamp < c.CompleteTimestamp AND c.CompleteTimestamp < b.CompleteTimestamp"
-				+ "  );");
-		test.printTimeTaken();		
-
-		System.out.println("Measuring the time taken to execute the weakly follows relation on the indexed BPI 2011 log ...");
-		test.startTimeMeasurement();
-		test.executeQuery("SELECT * FROM FOLLOWS(SELECT caseid,activity,completetimestamp FROM BPI2011INDEXED)");
-		test.printTimeTaken();
-		
-		System.out.println("Measuring the time taken to execute a nested query to get the weakly follows relation on the indexed BPI 2011 log ...");
-		test.startTimeMeasurement();
-		test.executeQuery(
-				"  SELECT DISTINCT a.Activity, b.Activity "
-				+ "FROM BPI2011INDEXED a, BPI2011INDEXED b "
-				+ "WHERE a.CaseID = b.CaseID AND a.CompleteTimestamp < b.CompleteTimestamp AND "
-				+ "  NOT EXISTS("
-				+ "    SELECT * "
-				+ "    FROM BPI2011INDEXED c "
-				+ "    WHERE c.CaseID = a.CaseID AND a.CompleteTimestamp < c.CompleteTimestamp AND c.CompleteTimestamp < b.CompleteTimestamp"
-				+ "  );");
-		test.printTimeTaken();		
-
-		System.out.println("Measuring the time taken to execute a nested query to get the weakly follows relation on the BPI 2012 log ...");
-		test.startTimeMeasurement();
-		test.executeQuery(
-				"  SELECT DISTINCT a.Activity, b.Activity "
-				+ "FROM BPI2012 a, BPI2012 b "
-				+ "WHERE a.CaseID = b.CaseID AND a.CompleteTimestamp < b.CompleteTimestamp AND "
-				+ "  NOT EXISTS("
-				+ "    SELECT * "
-				+ "    FROM BPI2012 c "
-				+ "    WHERE c.CaseID = a.CaseID AND a.CompleteTimestamp < c.CompleteTimestamp AND c.CompleteTimestamp < b.CompleteTimestamp"
-				+ "  );");
-		test.printTimeTaken();		
-
-		System.out.println("Measuring the time taken to execute a nested query to get the weakly follows relation on the BPI 2011 log ...");
-		test.startTimeMeasurement();
-		test.executeQuery(
-				"  SELECT DISTINCT a.Activity, b.Activity "
-				+ "FROM BPI2011 a, BPI2011 b "
-				+ "WHERE a.CaseID = b.CaseID AND a.CompleteTimestamp < b.CompleteTimestamp AND "
-				+ "  NOT EXISTS("
-				+ "    SELECT * "
-				+ "    FROM BPI2011 c "
+				+ "    FROM "+logName+" c "
 				+ "    WHERE c.CaseID = a.CaseID AND a.CompleteTimestamp < c.CompleteTimestamp AND c.CompleteTimestamp < b.CompleteTimestamp"
 				+ "  );");
 		test.printTimeTaken();		
