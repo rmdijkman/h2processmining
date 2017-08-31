@@ -29,7 +29,6 @@ public class PerformanceWeaklyFollows {
 				+ " AS SELECT "
 				+ "CaseID,"
 				+ "Activity,"
-				+ "Resource,"
 				+ "convert(parseDateTime(CompleteTimestamp,'yyyy/MM/dd hh:mm:ss'),TIMESTAMP) AS CompleteTimestamp,"
 				+ "Variant,"
 				+ "VariantIndex "
