@@ -35,8 +35,8 @@ public class WeaklyFollows {
 	 * The timestamp must be of a 'Time' SQL type.
 	 * 
 	 * The returned weakly follows relation has two columns:
-	 * - the event label for the preceding event (Event_Label_P)
-	 * - the event label for the succeeding event (Event_Label_S)
+	 * - the event label for the preceding event (EVENT_LABEL_P)
+	 * - the event label for the succeeding event (EVENT_LABEL_S)
 	 * 
 	 * @param conn		The database connection. Automatically passed by H2 through the SQL query of which the invocation is a part.
 	 * @param eventLog	An event log as specified above.
@@ -71,8 +71,8 @@ public class WeaklyFollows {
 		//If there is no data in the eventLog, return an empty result
 		if ((eventLog == null) || (eventLog.getMetaData().getColumnCount() != 3)){
 			SimpleResultSet result = new SimpleResultSet();
-			result.addColumn("Event_Label_P", Types.VARCHAR, 255, 0);
-			result.addColumn("Event_Label_S", Types.VARCHAR, 255, 0);
+			result.addColumn("EVENT_LABEL_P", Types.VARCHAR, 255, 0);
+			result.addColumn("EVENT_LABEL_S", Types.VARCHAR, 255, 0);
 			return result;
 		}
 
@@ -133,8 +133,8 @@ public class WeaklyFollows {
 		//Create the result.
 		SimpleResultSet result = new SimpleResultSet();
 		ResultSetMetaData rsm = eventLog.getMetaData();
-		result.addColumn("Event_Label_P", rsm.getColumnType(2), rsm.getPrecision(2), 0);
-		result.addColumn("Event_Label_S", rsm.getColumnType(2), rsm.getPrecision(2), 0);
+		result.addColumn("EVENT_LABEL_P", rsm.getColumnType(2), rsm.getPrecision(2), 0);
+		result.addColumn("EVENT_LABEL_S", rsm.getColumnType(2), rsm.getPrecision(2), 0);
 
 		//For each antecedent/consequent combination:
 		for (Entry<Object,Set<Object>> acs: antecedent2consequents.entrySet()){
