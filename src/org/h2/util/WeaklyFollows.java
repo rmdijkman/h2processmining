@@ -69,7 +69,8 @@ public class WeaklyFollows {
 		}
 		
 		//If there is no data in the eventLog, return an empty result
-		if ((eventLog == null) || (eventLog.getMetaData().getColumnCount() != 3)){
+		//Also, if the connection specifies that only the columnlist should be returned, return an empty result
+		if ((eventLog == null) || (eventLog.getMetaData().getColumnCount() != 3) || conn.getMetaData().getURL().equals("jdbc:columnlist:connection")){
 			SimpleResultSet result = new SimpleResultSet();
 			result.addColumn("EVENT_LABEL_P", Types.VARCHAR, 255, 0);
 			result.addColumn("EVENT_LABEL_S", Types.VARCHAR, 255, 0);
