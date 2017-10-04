@@ -12,13 +12,13 @@ The package nl.tue.is.weaklyfollows.test contains examples of the use of the wea
 
 Compared to the vanilla H2 code, this database engine includes the following changes. 
 
-org.h2.util.WeaklyFollows
+- org.h2.util.WeaklyFollows
 	An implementation of the weakly follows relation.
-nl.tue.is.weaklyfollows.test
+- nl.tue.is.weaklyfollows.test
 	The tests for the weakly follows relation, including the performance tests.
-org.h2.expression.Subquery.getValue
+- org.h2.expression.Subquery.getValue
 	Adapted to return a resultset when the result of the subquery has multiple rows.
-org.h2.command.Parser.readJavaFunction
+- org.h2.command.Parser.readJavaFunction
 	Adapted to return the Java function that must be called to create the weakly follows relation, 
 	such that this function does not have to be added manually. 
 	In future work, the function should be added to the 'org.h2.expression.Function' class. 
@@ -29,3 +29,22 @@ org.h2.command.Parser.readJavaFunction
 	which it does not close, because otherwise the ResultSet would be unavailable. 
 	Consequently, we should close it now that we are done. This is not very neat. 
 	In future work this should be improved.
+
+# Known Bug
+	
+```
+SELECT * FROM FOLLOWS(SELECT * FROM Event_Log) 
+  WHERE (event_label_p = 'A' or event_label_p = 'B' or event_label_p = 'C') and 
+        (event_label_s = 'A' or event_label_s = 'B' or event_label_s = 'C')
+```
+returns:
+```
+A B
+A C
+A B
+A C
+A B
+A C
+```
+The answer should be only A B and A C.
+	
