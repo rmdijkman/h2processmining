@@ -68,7 +68,7 @@ public class PerformanceWeaklyFollows {
 		rs = stat.executeQuery("SELECT COUNT(*) FROM (SELECT Activity FROM " + tableName + " GROUP BY Activity)");
 		rs.next();
 		System.out.println("\tnumber of event types:\t" + rs.getInt(1));
-}
+	}
 
 	public void printResultSet(ResultSet rs) throws SQLException{
 		while (rs.next()){
