@@ -1,5 +1,7 @@
 package nl.tue.loggeneration;
 
+import java.io.FileNotFoundException;
+import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -14,8 +16,18 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A Markov chain for sequences of symbols from a given alphabet.
- * The alphabet must consist of consecutive numbers starting at 1. 
+ * Enables log generation based on a Markov chain.
+ * The Markov chain is initialized based on an existing log. It describes:
+ * 1. the probability that a certain action follows another action 
+ * 2. the average time till the completion of an action from the completion of the previous action
+ * 3. the interarrival time of cases
+ * It will generate a log that has average interarrival times between cases,
+ * contains cases that have a sequence that is generated based on the probability of actions following other actions,
+ * and average time between the completion of actions.
+ * This can easily be improved by also generating interarrival times and completion times based on averages.
+ * However, for the use-case in this project that is not necessary.
+ * The generator generates a log with case identifiers, activity labels and completion times.
+ * The generated log will - when process mined - on average produce a process model that is similar to the model that can be mined from the original log.  
  */
 public class MarkovGeneration {
 
@@ -30,8 +42,8 @@ public class MarkovGeneration {
 	 * = the average time it takes until the symbol j completed in a sequence after i, if i > 0 AND j > 0
 	 * = 0, if i > 0 AND j == 0
 	 */
-	double[][] chain;
-	double[][] timing;
+	private double[][] chain;
+	private double[][] timing;
 	
 	/*
 	 * Used to transform activity labels to numbers (and back) for efficiency.
@@ -40,25 +52,10 @@ public class MarkovGeneration {
 	private Map<String,Integer> activity2Id;
 	private Map<Integer,String> id2Activity;
 
-	/**
-	 * Initializes the Markov chain.
-	 */
-	public MarkovGeneration(){		
+	private MarkovGeneration(){		
 		nextId = 1;
 		activity2Id = new HashMap<String,Integer>();
 		id2Activity = new HashMap<Integer,String>();
-	}
-
-	/**
-	 * Initializes the Markov chain given the size of the alphabet.
-	 * 
-	 * @param size the size of the alphabet.
-	 */
-	public MarkovGeneration(int size){
-		this();
-		
-		chain = new double[size+1][size+1];
-		timing = new double[size+1][size+1];
 	}
 
 	/**
@@ -184,28 +181,36 @@ public class MarkovGeneration {
 		return id2Activity.get(number);
 	}
 	
-	/**
+	/*
 	 * Generates a random execution sequence based on the current Markov chain.
 	 * The execution starts from the given start time (in seconds) and
 	 * has the given case identifier.
 	 * 
-	 * @param previousStart a start time in seconds
-	 * @param identifier a unique case identifier
-	 * @return a comma-separated execution sequence of the form caseID, activity, time
+	 * previousStart a start time in seconds
+	 * identifier a unique case identifier
+	 * Object[2], where
+	 * Object[0] = a comma-separated execution sequence of the form caseID, activity, time
+	 * Object[1] = the time at which the first event occurred
 	 */
-	public String generateSequence(double startTime, String identifier) {
-		String result = "";
+	private Object[] generateSequence(double startTime, String identifier) {		
+		String sequence = "";
 		int previous = 0;
 		int next = selectNext(0);
-		SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd hh:mm:ss"); 
+		long nextTime = (long) startTime;
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd hh:mm:ss");
+		Double firstEventTime = null;
 		while (next != 0) {
-			long unixTime = (long) ((startTime + timing[previous][next])*1000.0);
-			Date time = new Date(unixTime);
+			nextTime = (long) (nextTime + timing[previous][next]);
+			Date time = new Date(nextTime * 1000);
+			if (firstEventTime == null) firstEventTime = (double) nextTime;
 			
-			result += identifier + "," + numberToLabel(next) + "," + sdf.format(time) + "\n";
+			sequence += identifier + "," + numberToLabel(next) + "," + sdf.format(time) + "\n";
 			previous = next;
 			next = selectNext(next);
 		}
+		Object result[] = new Object[2];
+		result[0] = sequence;
+		result[1] = firstEventTime;
 		return result;
 	}
 	
@@ -220,9 +225,35 @@ public class MarkovGeneration {
 		}
 		return 0;
 	}
+	
+	/**
+	 * Generates a log of the given size.
+	 * The start time of the first case in the log will be 'now'.
+	 * The number of cases to generate can be specified.
+	 * The name of the file to which the log is saved can also be specified.
+	 * The file has a header row: "Case ID,Activity,Completion Time" (without quotes).
+	 * 
+	 * @param nrCases the number of cases in the log to generate
+	 * @param filePath the path of the file to save the log to
+	 * @return a comma-separated execution sequence of the form caseID, activity, time
+	 * @throws FileNotFoundException 
+	 */
+	public void generateLog(int nrCases, String filePath) throws FileNotFoundException {
+		PrintWriter out = new PrintWriter(filePath);
+		out.println("Case ID,Activity,Completion Time");
+		double startTime = System.currentTimeMillis()/1000.0;
+		for (int i = 0; i < nrCases; i++) {
+			Object o[] = generateSequence(startTime,Integer.toString(i));
+			startTime = (Double) o[1];
+			out.print((String) o[0]);
+		}
+		out.flush();
+		out.close();
+	}
 
 	/**
-	 * Casts the Markov chain to a string, rounds probabilities to 2 decimals
+	 * Casts the Markov chain to a string, rounds probabilities to 2 decimals.
+	 * Rounds times to 0 decimals.
 	 */
 	public String toString(){
 		String result = " \t";
@@ -258,79 +289,4 @@ public class MarkovGeneration {
 		return result;
 	}
 	
-	/**
-	 * Computes the probability that the given sequence is generated by the Markov chain. 
-	 * 
-	 * @param sequence the sequence for which to compute the probability
-	 * @return the probability that the given sequence is generated by the Markov chain
-	 */
-	public double sequenceProbability(int[] sequence){
-		double probability = 1.0;
-		for (int i = 0; i < sequence.length - 1; i++){
-			probability *= chain[sequence[i]][sequence[i+1]];
-		}
-		if (sequence.length > 0){
-			probability *= chain[sequence[sequence.length-1]][0];
-		}
-		return probability;
-	}
-	
-	/**
-	 * Returns the most probable sequence that is generated by the Markov chain, ignoring loops
-	 * (i.e. each symbol occurs at most once).
-	 * 
-	 * @return a sequence
-	 */
-	public Integer[] mostProbableSequence(){
-		boolean[] occurringSymbols = new boolean[chain.length];
-		int nrOccurringSymbols = 0;		
-		int i = 0; //start at start
-		List<Integer> result = new ArrayList<Integer>();
-		do{
-			int mostLikelyFollower = 0;
-			double mostLikelyFollowerProbability = 0.0;
-			for (int j = 0; j < chain.length; j++){
-				if ((chain[i][j] > mostLikelyFollowerProbability) && (!occurringSymbols[j])){
-					mostLikelyFollower = j;
-					mostLikelyFollowerProbability = chain[i][j]; 
-				}
-			}
-			i = mostLikelyFollower;
-			if (i != 0){
-				occurringSymbols[i] = true;
-				nrOccurringSymbols += 1;
-				result.add(i);
-			}
-		}while ((i != 0) && (nrOccurringSymbols < chain.length-1));
-		return result.toArray(new Integer[0]);
-	}
-	
-	/**
-	 * Computes and returns the similarity of sequences two sequences in the Markov chain.
-	 * The similarity is computed as the probability that sequence s2 is generated from sequence s1
-	 * by (accidentally) inserting, deleting, or replacing activities, or the probability that sequence
-	 * s1 is generated from sequence s1 by (accidentally) inserting, deleting, or replacing activities.
-	 * 
-	 * @param s1 a sequence
-	 * @param s2 another sequence
-	 * @return the similarity of the sequences
-	 */
-	public double similarity(int[] s1, int[] s2){
-		return similarity(s1,s2,0,0,0,0);
-	}
-	
-	private double similarity(int[] s1, int[] s2, int pos1, int pos2, int state1, int state2){
-		if ((pos1 >= s1.length) && (pos2 >= s2.length)){
-			return 1.0;
-		}else if (pos1 >= s1.length){
-			return chain[state2][s2[pos2]] * similarity(s1,s2,pos1,pos2+1,state1,s2[pos2]);
-		}else if (pos2 >= s2.length){
-			return chain[state1][s1[pos1]] * similarity(s1,s2,pos1+1,pos2,s1[pos1],state2);			
-		}else if (s1[pos1] == s2[pos2]){
-			return similarity(s1,s2,pos1+1,pos2+1,s1[pos1],s2[pos2]);
-		}else{
-			return Math.max(chain[state1][s1[pos1]] * similarity(s1,s2,pos1+1,pos2,s1[pos1],state2),
-				   chain[state2][s2[pos2]] * similarity(s1,s2,pos1,pos2+1,state1,s2[pos2]));
-		}
-	}
 }

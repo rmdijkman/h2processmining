@@ -1,5 +1,6 @@
 package nl.tue.is.weaklyfollows.test;
 
+import java.io.FileNotFoundException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -64,7 +65,7 @@ public class SandboxGeneration {
 		rs.close();
 	}
 	
-	public static void main(String args[]) throws ClassNotFoundException, SQLException {
+	public static void main(String args[]) throws ClassNotFoundException, SQLException, FileNotFoundException {
 		/*
 		SandboxGeneration test = new SandboxGeneration();
 
@@ -73,9 +74,7 @@ public class SandboxGeneration {
 		test.close();
 		*/
 		MarkovGeneration mc = new MarkovGeneration("./tempdb","appeals");
-		//System.out.print(mc.toString());
-		System.out.println(mc.generateSequence(0.0, "1"));
-		
+		mc.generateLog(1000, "test.csv");
 	}
 	
 }
