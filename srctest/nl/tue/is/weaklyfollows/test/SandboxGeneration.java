@@ -74,7 +74,10 @@ public class SandboxGeneration {
 		test.close();
 		*/
 		MarkovGeneration mc = new MarkovGeneration("./tempdb","appeals");
-		mc.generateLog(1000, "test.csv");
+		for (int i = 1; i <= 13; i++) {
+			mc.addActivity("ADD" + i);
+		}
+		mc.generateLog(1268, "test.csv");
 	}
 	
 }

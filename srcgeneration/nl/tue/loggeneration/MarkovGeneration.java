@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 /**
  * Enables log generation based on a Markov chain.
@@ -42,8 +43,8 @@ public class MarkovGeneration {
 	 * = the average time it takes until the symbol j completed in a sequence after i, if i > 0 AND j > 0
 	 * = 0, if i > 0 AND j == 0
 	 */
-	private double[][] chain;
-	private double[][] timing;
+	private List<List<Double>> chain;
+	private List<List<Double>> timing;
 	
 	/*
 	 * Used to transform activity labels to numbers (and back) for efficiency.
@@ -51,11 +52,15 @@ public class MarkovGeneration {
 	private int nextId;
 	private Map<String,Integer> activity2Id;
 	private Map<Integer,String> id2Activity;
+	
+	//For random selection
+	Random random;
 
 	private MarkovGeneration(){		
 		nextId = 1;
 		activity2Id = new HashMap<String,Integer>();
 		id2Activity = new HashMap<Integer,String>();
+		random = new Random(System.currentTimeMillis());
 	}
 
 	/**
@@ -109,17 +114,25 @@ public class MarkovGeneration {
 		conn.close();
 		
 		//initialize the chain
-		chain = new double[nextId][nextId];
-		timing = new double[nextId][nextId];
+		chain = new ArrayList<List<Double>>();
+		timing = new ArrayList<List<Double>>();
+		for (int i = 0; i < nextId; i++) {
+			chain.add(new ArrayList<Double>(nextId));
+			timing.add(new ArrayList<Double>(nextId));			
+			for (int j = 0; j < nextId; j++) {
+				chain.get(i).add(0.0);
+				timing.get(i).add(0.0);
+			}
+		}
 		
 		/*
 		 * timesFollowed[i] 
 		 * = the number of times start was followed by something, if i == 0
 		 * = the number of times symbol i was followed by some other symbol, if i > 0
 		 */
-		double timesFollowed[] = new double[chain.length];
-		double [][] chainCount = new double[chain.length][chain.length]; //the actual chain, but containing follows-counts rather than follows-probabilities
-		double [][] totalTime = new double[chain.length][chain.length]; //the total time between completion of [i] and [j]
+		double timesFollowed[] = new double[chain.size()];
+		double [][] chainCount = new double[chain.size()][chain.size()]; //the actual chain, but containing follows-counts rather than follows-probabilities
+		double [][] totalTime = new double[chain.size()][chain.size()]; //the total time between completion of [i] and [j]
 		
 		
 		//Compute the number of times i is followed by j, put that in chainCount
@@ -145,10 +158,10 @@ public class MarkovGeneration {
 		}
 		
 		//Rework the number of times i is followed by j, into the probability that i is followed by j, put that in chain
-		for (int i = 0; i < chain.length; i++){
-			for (int j = 0; j < chain.length; j++){
-				timing[i][j] = (totalTime[i][j]/chainCount[i][j])/1000; //in seconds 
-				chain[i][j] = chainCount[i][j]/timesFollowed[i];
+		for (int i = 0; i < chain.size(); i++){
+			for (int j = 0; j < chain.size(); j++){
+				timing.get(i).set(j, (totalTime[i][j]/chainCount[i][j])/1000); //in seconds 
+				chain.get(i).set(j, chainCount[i][j]/timesFollowed[i]);
 			}			
 		}
 	}
@@ -200,7 +213,7 @@ public class MarkovGeneration {
 		SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd hh:mm:ss");
 		Double firstEventTime = null;
 		while (next != 0) {
-			nextTime = (long) (nextTime + timing[previous][next]);
+			nextTime = (long) (nextTime + timing.get(previous).get(next));
 			Date time = new Date(nextTime * 1000);
 			if (firstEventTime == null) firstEventTime = (double) nextTime;
 			
@@ -215,10 +228,10 @@ public class MarkovGeneration {
 	}
 	
 	public int selectNext(int from) {
-		double p = Math.random();
+		double p = random.nextDouble();
 		double sumP = 0.0;
-		for (int to = 1; to < chain.length; to++) {
-			sumP += chain[from][to];
+		for (int to = 1; to < chain.size(); to++) {
+			sumP += chain.get(from).get(to);
 			if (p <= sumP) {
 				return to;
 			}
@@ -251,42 +264,94 @@ public class MarkovGeneration {
 		out.close();
 	}
 
+	private String rpad(int i) {
+		return rpad(Integer.toString(i));
+	}
+	private String rpad(long l) {
+		return rpad(Long.toString(l));
+	}
+	private String rpad(String s) {
+	    return (s + "                          ").substring(0, 10);
+	}
+	
 	/**
 	 * Casts the Markov chain to a string, rounds probabilities to 2 decimals.
 	 * Rounds times to 0 decimals.
 	 */
 	public String toString(){
 		String result = " \t";
-		for (int j = 1; j < chain.length; j++){
+		for (int j = 1; j < chain.size(); j++){
 			result += j + "\t";
 		}
 		result += "stop\n";
-		for (int i = 0; i < chain.length; i++){
+		for (int i = 0; i < chain.size(); i++){
 			result += (i == 0)?"start":i;
 			result += "\t";
-			for (int j = 1; j < chain.length; j++){
-				result += Math.round(chain[i][j]*100.0)/100.0 + "\t";
+			for (int j = 1; j < chain.size(); j++){
+				result += Math.round(chain.get(i).get(j)*100.0)/100.0 + "\t";
 			}
-			result += Math.round(chain[i][0]*100.0)/100.0;
+			result += Math.round(chain.get(i).get(0)*100.0)/100.0;
 			result += "\n";
 		}
 
-		result += " \n\t";
-		for (int j = 1; j < chain.length; j++){
-			result += j + "\t";
+		result += " \n";
+		result += rpad("");
+		for (int j = 1; j < chain.size(); j++){
+			result += rpad(j);
 		}
 		result += "stop\n";
-		for (int i = 0; i < chain.length; i++){
-			result += (i == 0)?"start":i;
-			result += "\t";
-			for (int j = 1; j < chain.length; j++){
-				result += Math.round(timing[i][j]) + "\t";
+		for (int i = 0; i < chain.size(); i++){
+			result += (i == 0)?rpad("start"):rpad(i);
+			for (int j = 1; j < chain.size(); j++){
+				result += rpad(Math.round(timing.get(i).get(j)));
 			}
-			result += Math.round(timing[i][0]);
+			result += Math.round(timing.get(i).get(0));
 			result += "\n";
 		}
 
 		return result;
+	}
+	
+	/**
+	 * Adds the activity with the given label to the generator.
+	 * The activity is added in such a way that its occurrence in the log after the occurrence of another activity, 
+	 * is as likely as one of the activities that is already in the log.
+	 * After the activity occurs, the next activity to occur is determined by a random copy of some existing activity.   
+	 * 
+	 * @param label the label of the activity that must be added
+	 */
+	public void addActivity(String label) {
+		
+		//randomly select an activity
+		int selectedActivity = random.nextInt(nextId-1) + 1;
+		//create a the new activity with the given label
+		int newActivityId = labelToNumber(label);		
+		//copy chain/timing properties of the selectedActivity
+		chain.add(new ArrayList<Double>());
+		timing.add(new ArrayList<Double>());
+		for (int j = 0; j < chain.get(selectedActivity).size(); j++) {
+			chain.get(newActivityId).add(chain.get(selectedActivity).get(j));
+			timing.get(newActivityId).add(timing.get(selectedActivity).get(j));			
+		}
+
+		//for each activity a (including newActivity)
+		for (int a = 0; a < chain.size(); a++) {
+			//randomly select a target activity targetActivity (should not be the final activity 0)			
+			int targetActivity = random.nextInt(chain.get(a).size()-1) + 1;
+			//copy the probability that targetActivity follows a to the probability that newActivity follows a
+			double probability = chain.get(a).get(targetActivity);
+			//if the targetActivity is from 'before' the selected activity, set its probability to 0. This prevents 'skipping', which makes the log shorter.
+			//TODO: to properly do this, the activities should be somehow 'sorted' in the order in which they are most likely to occur.
+			if (a < selectedActivity) probability = 0;
+			chain.get(a).add(probability);
+			//for each target activity (including targetActivity)
+			for (int anyTarget = 0; anyTarget < (chain.get(a).size() - 1); anyTarget++) {
+				//reduce the probability p' to p' * p
+				chain.get(a).set(anyTarget, chain.get(a).get(anyTarget) - probability * chain.get(a).get(anyTarget));
+			}
+			//copy the time after which T follows A to the time that N follows A
+			timing.get(a).add(timing.get(a).get(targetActivity));
+		}
 	}
 	
 }
