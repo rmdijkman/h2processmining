@@ -1,2 +1,8 @@
 bin/
 target/
+/tempdb.mv.db
+/tempdb.trace.db
+/test.mv.db
+/test.trace.db
+/testextended.csv
+/testoriginal.csv

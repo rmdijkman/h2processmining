@@ -321,6 +321,44 @@ public class MarkovGeneration {
 	 * @param label the label of the activity that must be added
 	 */
 	public void addActivity(String label) {
+		//randomly select a flow
+		int sourceId = random.nextInt(nextId);
+		int targetId = random.nextInt(nextId);
+		
+		//create a the new activity with the given label
+		//set chain and timing properties from/to the new activity to 0.0 
+		int newActivityId = labelToNumber(label);		
+		chain.add(new ArrayList<Double>());
+		timing.add(new ArrayList<Double>());
+		for (int i = 0; i < chain.size()-1; i++) {
+			chain.get(i).add(0.0);
+			timing.get(i).add(0.0);			
+		}
+		for (int i = 0; i < chain.size(); i++) {
+			chain.get(chain.size()-1).add(0.0);
+			timing.get(chain.size()-1).add(0.0);			
+		}
+		
+		//the outgoing flows from newActivity should be the same as outgoing flows from source
+		for (int i = 0; i < chain.size()-1; i++) {
+			chain.get(newActivityId).set(i, chain.get(sourceId).get(i));
+			timing.get(newActivityId).set(i, timing.get(sourceId).get(i));
+		}
+		
+		//the incoming flows to newActivity should be the same as the incoming flows to the target
+		//the probability of these flows should be divided by 2, because there are now 2 possibilities
+		for (int i = 0; i < chain.size()-1; i++) {
+			double toProbability = chain.get(i).get(targetId) / 2.0d;
+			double toTiming = timing.get(i).get(targetId);
+			
+			chain.get(i).set(targetId, toProbability);
+			chain.get(i).set(newActivityId, toProbability);
+			timing.get(i).set(newActivityId, toTiming);
+		}		
+	}	
+	
+	/* INITIAL QUICK AND DIRTY ATTEMPT
+	public void addActivity(String label) {
 		
 		//randomly select an activity
 		int selectedActivity = random.nextInt(nextId-1) + 1;
@@ -341,7 +379,6 @@ public class MarkovGeneration {
 			//copy the probability that targetActivity follows a to the probability that newActivity follows a
 			double probability = chain.get(a).get(targetActivity);
 			//if the targetActivity is from 'before' the selected activity, set its probability to 0. This prevents 'skipping', which makes the log shorter.
-			//TODO: to properly do this, the activities should be somehow 'sorted' in the order in which they are most likely to occur.
 			if (a < selectedActivity) probability = 0;
 			chain.get(a).add(probability);
 			//for each target activity (including targetActivity)
@@ -353,5 +390,123 @@ public class MarkovGeneration {
 			timing.get(a).add(timing.get(a).get(targetActivity));
 		}
 	}
+	*/		
 	
+	/**
+	 * Returns the probabilities of the initial states of the process.
+	 * 
+	 * @return an array a, such that a[i] represents the probability that numberToLabel(i) is the initial state 
+	 */
+	public double[] initialState() {
+		double result[] = new double[chain.size()-1];
+		for (int i = 1; i < chain.size(); i++) {
+			result[i-1] = chain.get(0).get(i);
+		}		
+		return result;
+	}
+	
+	/**
+	 * Returns, given the probabilities of current states, the probabilities of the next states of the process. 
+	 * 
+	 * @param current an array, such that current[i] represents the probability that numberToLabel(i) is the current state
+	 * @return an array a, such that a[i] represents the probability that numberToLabel(i) is the next state
+	 */
+	public double[] probabilityNextState(double current[]) {
+		double result[] = new double[chain.size()-1];
+		
+		for (int i = 1; i < chain.size(); i++) {
+			double inProduct = 0.0;
+			for (int j = 1; j < chain.size(); j++) {
+				inProduct += current[j-1]*chain.get(j).get(i);
+			}
+			result[i-1] = inProduct;
+		}
+		
+		return result;
+	}
+	
+	/**
+	 * Returns a string representation of the given state probabilities.
+	 * 
+	 * @param stateProbability an array a, such that a[i] represents the probability that numberToLabel(i) is the state
+	 * @return a string representation of the state probability
+	 */
+	public static String stateProbabilityToString(double stateProbability[]) {
+		String result = "[";
+		for (int i = 0; i < stateProbability.length; i++) {
+			result += Double.toString(Math.round(stateProbability[i]*100.0)/100.0);
+			if (i < stateProbability.length - 1) result += ", ";
+		}
+		result += "]";
+		return result;
+	}
+	
+	/**
+	 * returns true if the given state probabilities are the same within a margin of 0.01
+	 * 
+	 * @param stateProbability1 an array representing state probabilities
+	 * @param stateProbability2 an array representing state probabilities
+	 * @return true or false
+	 */
+	public static boolean similarStateProbability(double stateProbability1[], double stateProbability2[]) {
+		double precision = 0.01;
+		for (int i = 0; i < stateProbability1.length; i++) {
+			if (Math.abs(stateProbability1[i] - stateProbability2[i]) > precision) return false;
+		}
+		return true;
+	}
+	
+	/**
+	 * Returns the number of times each activity is expected to be executed per case, in an infinite number of case executions
+	 * 
+	 * @return an array a, such that a[i] represents the number of times numberToLabel(i) is expected to be executed
+	 */
+	public double[] expectedExecutions() {
+		double nrExecutions[] = new double[chain.size()-1];
+		
+		double state[] = initialState();
+		double newState[] = probabilityNextState(state);
+		while (!similarStateProbability(state, newState)) {
+			for (int i = 0; i < nrExecutions.length; i++) {
+				nrExecutions[i] += state[i];
+			}
+			state = newState;
+			newState = probabilityNextState(state);
+		}
+		
+		return nrExecutions;
+	}
+
+	/**
+	 * Returns the expected total number of activity per case, in an infinite number of case executions
+	 * 
+	 * @return the expected number of activities per case
+	 */
+	public double totalExpectedExecutions() {
+		double e[] = expectedExecutions();
+		double result = 0.0;
+		for (int i = 0; i < e.length; i++) {
+			result += e[i];
+		}
+		return result;
+	}
+	
+	/**
+	 * Extends the generator in such a way that the expected number of activities per case is at least a factor f of the original.
+	 * The method will create the closest generator it can that is at least a factor f. 
+	 * The actual factor is likely to be higher f and is returned.
+	 * f should be > 1, because the goal is to increase. 
+	 * 
+	 * @param f the factor that the expected number of executions per case should become
+	 * @return the actual factor that the expected number of execution per case has become
+	 */
+	public double extendByExpectedExecutions(double f) {
+		double e = totalExpectedExecutions();
+		double eNew = e;
+		while (eNew/e < f) {
+			addActivity("A" + nextId);
+			eNew = totalExpectedExecutions();			
+		}
+		return eNew/e;
+	}
 }

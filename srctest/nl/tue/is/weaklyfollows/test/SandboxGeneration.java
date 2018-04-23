@@ -69,15 +69,21 @@ public class SandboxGeneration {
 		/*
 		SandboxGeneration test = new SandboxGeneration();
 
-		test.loadLog("appeals");
-		test.printTableSize("appeals");
+		test.loadLog("testlog");
+		test.printTableSize("testlog");
 		test.close();
 		*/
-		MarkovGeneration mc = new MarkovGeneration("./tempdb","appeals");
-		for (int i = 1; i <= 13; i++) {
-			mc.addActivity("ADD" + i);
-		}
-		mc.generateLog(1268, "test.csv");
+		MarkovGeneration mc = new MarkovGeneration("./tempdb","testlog");
+		//System.out.println(MarkovGeneration.stateProbabilityToString(mc.expectedExecutions()));
+		//System.out.println(mc.totalExpectedExecutions());
+		
+		//mc.addActivity("ADD");
+		//System.out.println(mc.toString());
+		//mc.generateLog(100, "testoriginal.csv");
+		
+		mc.generateLog(100, "testoriginal.csv");
+		mc.extendByExpectedExecutions(5.0/2.2);
+		mc.generateLog(100, "testextended.csv");
 	}
 	
 }
