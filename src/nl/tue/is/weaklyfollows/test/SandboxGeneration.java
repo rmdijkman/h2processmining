@@ -66,7 +66,7 @@ public class SandboxGeneration {
 		rs.close();
 	}
 	
-	public static void generateCollection() throws ClassNotFoundException, SQLException, FileNotFoundException {
+	public static void generateCollectionByExtension() throws ClassNotFoundException, SQLException, FileNotFoundException {
 		System.out.println("Loading Log.");
 		
 		//SandboxGeneration test = new SandboxGeneration();
@@ -104,6 +104,37 @@ public class SandboxGeneration {
 		}
 		
 	}
+
+	public static void generateCollectionByReduction() throws ClassNotFoundException, SQLException, FileNotFoundException, LogGenerationException {
+		
+		//System.out.println("Loading Log.");		
+		
+		//SandboxGeneration test = new SandboxGeneration();
+		//test.loadLog("BPI2011");
+		//test.close();
+		
+		System.out.println("Initializing generator.");		
+		
+		MarkovGeneration mc = new MarkovGeneration("./temp/tempdb","BPI2011");
+		
+		System.out.println("Done initializing.");
+		
+		/* 130 is the expected number of events per case in the BPI2011 log.
+		 * For this experiment, we will reduce the expected number of events:
+		 * - for the BPI2011 log
+		 * - in steps of 10 (i.e. a factor 12/13, 11/13, 10/13, ...)
+		 * - until we reach a factor 1/13 (i.e. 10 expected events per case)
+		 */
+		for (double factor = (13.0d/13.0d); factor > (0.5d/13.0d); factor -= (0.5d/13.0d)) {
+			MarkovGeneration mcexperiment = mc.clone();			
+			System.out.print("Creating log reduced by " + factor + " ... ");
+			double actualfactor = mcexperiment.reduceByExpectedExecutions(factor);
+			String stringfactor = Integer.toString((int) Math.round(actualfactor*100.0));
+			System.out.println("realized reduction: " + actualfactor);
+			mcexperiment.generateLog(1000, "./temp/experiment_1_"+stringfactor+".csv");
+		}
+		
+	}
 	
 	public static void main(String args[]) throws ClassNotFoundException, SQLException, FileNotFoundException, LogGenerationException {
 		/*
@@ -119,13 +150,14 @@ public class SandboxGeneration {
 		
 		//mc.addActivity("ADD");
 		//System.out.println(mc.toString());
+		//mc.removeActivity();
 		//mc.generateLog(100, "testoriginal.csv");
 		
 		//mc.generateLog(100, "./temp/testoriginal.csv");
 		//mc.extendByExpectedExecutions(5.0/2.2);
 		//mc.generateLog(100, "./temp/testextended.csv");
 
-		generateCollection();
+		generateCollectionByReduction();
 	}
 	
 }

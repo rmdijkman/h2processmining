@@ -291,8 +291,10 @@ public class MarkovGeneration {
 		double startTime = System.currentTimeMillis()/1000.0;
 		for (int i = 0; i < nrCases; i++) {
 			Object o[] = generateSequence(startTime,Integer.toString(i));
-			startTime = (Double) o[1];
-			out.print((String) o[0]);
+			if (((String) o[0]).length() > 0) { //Skip empty sequences
+				startTime = (Double) o[1];
+				out.print((String) o[0]);
+			}
 		}
 		out.flush();
 		out.close();
@@ -376,7 +378,7 @@ public class MarkovGeneration {
 	 * @throws LogGenerationException 
 	 */
 	public void addActivity(String label) throws LogGenerationException {
-		//randomly select a flow with some substantial probability
+		//select the flow with the highest probability
 		int sourceId = -1;
 		int targetId = -1;
 		double p = 0.0;
@@ -421,43 +423,46 @@ public class MarkovGeneration {
 			chain.get(i).set(newActivityId, toProbability);
 			timing.get(i).set(newActivityId, toTiming);
 		}		
-	}	
+	}
 	
-	/* INITIAL QUICK AND DIRTY ATTEMPT
-	public void addActivity(String label) {
-		
-		//randomly select an activity
-		int selectedActivity = random.nextInt(nextId-1) + 1;
-		//create a the new activity with the given label
-		int newActivityId = labelToNumber(label);		
-		//copy chain/timing properties of the selectedActivity
-		chain.add(new ArrayList<Double>());
-		timing.add(new ArrayList<Double>());
-		for (int j = 0; j < chain.get(selectedActivity).size(); j++) {
-			chain.get(newActivityId).add(chain.get(selectedActivity).get(j));
-			timing.get(newActivityId).add(timing.get(selectedActivity).get(j));			
+	public void removeActivity() {
+		//select the activity with the least expected executions
+		double expectedExecutions[] = expectedExecutions();
+		int lowestExpectationId = -1;
+		double lowestExpectation = Double.MAX_VALUE;
+		for (int i = 0; i < expectedExecutions.length; i ++) {
+			if (expectedExecutions[i] < lowestExpectation) {
+				lowestExpectation = expectedExecutions[i];
+				lowestExpectationId = i + 1;
+			}
 		}
 
-		//for each activity a (including newActivity)
-		for (int a = 0; a < chain.size(); a++) {
-			//randomly select a target activity targetActivity (should not be the final activity 0)			
-			int targetActivity = random.nextInt(chain.get(a).size()-1) + 1;
-			//copy the probability that targetActivity follows a to the probability that newActivity follows a
-			double probability = chain.get(a).get(targetActivity);
-			//if the targetActivity is from 'before' the selected activity, set its probability to 0. This prevents 'skipping', which makes the log shorter.
-			if (a < selectedActivity) probability = 0;
-			chain.get(a).add(probability);
-			//for each target activity (including targetActivity)
-			for (int anyTarget = 0; anyTarget < (chain.get(a).size() - 1); anyTarget++) {
-				//reduce the probability p' to p' * p
-				chain.get(a).set(anyTarget, chain.get(a).get(anyTarget) - probability * chain.get(a).get(anyTarget));
+		//reset the probabilities for the remaining activities
+		for (int i = 0; i < chain.size(); i++) {
+			for (int j = 0; j < chain.size(); j++) {
+				double newP = chain.get(i).get(j) + chain.get(i).get(lowestExpectationId) * chain.get(lowestExpectationId).get(j);
+				chain.get(i).set(j, newP);
 			}
-			//copy the time after which T follows A to the time that N follows A
-			timing.get(a).add(timing.get(a).get(targetActivity));
 		}
+
+		//reset the labels for the remaining activities
+		for (int i = lowestExpectationId; i < chain.size()-1; i++) {
+			String newLabel = id2Activity.get(i+1);
+			activity2Id.put(newLabel, i);
+			id2Activity.put(i, newLabel);
+		}
+		String oldLabel = id2Activity.get(chain.size()-1);
+		activity2Id.remove(oldLabel);
+		id2Activity.remove(chain.size()-1);
+		nextId --;
+		
+		//remove the activity with the least expected executions
+		for (int i = 0; i < chain.size(); i++) {
+			chain.get(i).remove(lowestExpectationId);
+		}
+		chain.remove(lowestExpectationId);				
 	}
-	*/		
-	
+		
 	/**
 	 * Returns the probabilities of the initial states of the process.
 	 * 
@@ -561,11 +566,10 @@ public class MarkovGeneration {
 	 * Extends the generator in such a way that the expected number of activities per case is at least a factor f of the original.
 	 * The method will create the closest generator it can that is at least a factor f. 
 	 * The actual factor is likely to be higher f and is returned.
-	 * f should be > 1, because the goal is to increase. 
+	 * f should be > 1, because the goal is to extend. 
 	 * 
-	 * @param f the factor that the expected number of executions per case should become
+	 * @param f the factor that the expected number of executions per case should be increased with
 	 * @return the actual factor that the expected number of execution per case has become
-	 * @throws LogGenerationException 
 	 */
 	public double extendByExpectedExecutions(double f) throws LogGenerationException {
 		double e = totalExpectedExecutions();
@@ -578,6 +582,25 @@ public class MarkovGeneration {
 			if (additions > 1000) {
 				throw new LogGenerationException("The desired extension could not be realized after 1000 added event types. Breaking off.");
 			}
+		}
+		return eNew/e;
+	}
+	
+	/**
+	 * Extends the generator in such a way that the expected number of activities per case is at least a factor f of the original.
+	 * The method will create the closest generator it can that is at most a factor f.
+	 * The actual factor is likely to be lower f and is returned.
+	 * f should be < 1, because the goal is to reduce.
+	 *  
+	 * @param f the factor by which the expected number of execution per case should be reduced
+	 * @return the actual factor that the expected number of execution per case has become
+	 */
+	public double reduceByExpectedExecutions(double f) {
+		double e = totalExpectedExecutions();
+		double eNew = e;
+		while (eNew/e > f) {
+			removeActivity();
+			eNew = totalExpectedExecutions();
 		}
 		return eNew/e;
 	}
