@@ -58,6 +58,11 @@
 			<artifactId>jts-core</artifactId>
 			<version>1.14.0</version>
 		</dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.12</version>
+        </dependency>
 		<!-- END COMPILE DEPENDENCIES ! -->
 
 	</dependencies>
@@ -92,6 +97,24 @@
 					<target>1.8</target>
 				</configuration>
 			</plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>1.2.1</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <mainClass>nl.tue.is.weaklyfollows.test.PerformanceWeaklyFollows</mainClass>
+                    <arguments>
+                        <argument>BPI2012</argument>
+                    </arguments>
+                </configuration>
+            </plugin>
 		</plugins>
 	</build>
 </project>
