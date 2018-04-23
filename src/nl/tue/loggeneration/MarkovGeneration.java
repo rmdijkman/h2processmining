@@ -377,21 +377,19 @@ public class MarkovGeneration {
 	 */
 	public void addActivity(String label) throws LogGenerationException {
 		//randomly select a flow with some substantial probability
-		List<int[]> substantials = new ArrayList<int[]>();
+		int sourceId = -1;
+		int targetId = -1;
+		double p = 0.0;
 		for (int i = 0; i < chain.size(); i++) {
 			for (int j = 0; j < chain.size(); j++) {
-				if (chain.get(i).get(j) > 0.1) {
-					int substantial[] = new int[2];
-					substantial[0] = i;
-					substantial[1] = j;
-					substantials.add(substantial);
+				if (chain.get(i).get(j) > p) {
+					p = chain.get(i).get(j);
+					sourceId = i;
+					targetId = j;
 				}
 			}
 		}
-		if (substantials.isEmpty()) throw new LogGenerationException("There are no sufficiently large generation moves to add an activity.");
-		int selected[] = substantials.get(random.nextInt(substantials.size()));
-		int sourceId = selected[0];
-		int targetId = selected[0];
+		if (sourceId == -1) throw new LogGenerationException("There are no sufficiently large generation moves to add an activity.");
 		
 		//create a the new activity with the given label
 		//set chain and timing properties from/to the new activity to 0.0 
