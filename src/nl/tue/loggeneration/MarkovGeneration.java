@@ -62,6 +62,38 @@ public class MarkovGeneration {
 		id2Activity = new HashMap<Integer,String>();
 		random = new Random(System.currentTimeMillis());
 	}
+	
+	@Override
+	public MarkovGeneration clone() {
+		MarkovGeneration result = new MarkovGeneration();
+		
+		result.chain = new ArrayList<List<Double>>();
+		for (List<Double> chainRow: chain) {
+			List<Double> newRow = new ArrayList<Double>();
+			result.chain.add(newRow);
+			for (double chainElement: chainRow) {
+				newRow.add(chainElement);
+			}
+		}
+		
+		result.timing = new ArrayList<List<Double>>();
+		for (List<Double> timingRow: timing) {
+			List<Double> newRow = new ArrayList<Double>();
+			result.timing.add(newRow);
+			for (double timingElement: timingRow) {
+				newRow.add(timingElement);
+			}
+		}
+		
+		result.nextId = nextId;
+		
+		for (Map.Entry<String, Integer> me: activity2Id.entrySet()) {
+			result.activity2Id.put(me.getKey(), me.getValue());
+			result.id2Activity.put(me.getValue(), me.getKey());
+		}		
+		
+		return result;
+	}
 
 	/**
 	 * Computes the Markov chain for the given database table.
@@ -205,8 +237,9 @@ public class MarkovGeneration {
 	 * Object[0] = a comma-separated execution sequence of the form caseID, activity, time
 	 * Object[1] = the time at which the first event occurred
 	 */
-	private Object[] generateSequence(double startTime, String identifier) {		
+	private Object[] generateSequence(double startTime, String identifier) throws LogGenerationException{		
 		String sequence = "";
+		int size = 0;
 		int previous = 0;
 		int next = selectNext(0);
 		long nextTime = (long) startTime;
@@ -218,6 +251,8 @@ public class MarkovGeneration {
 			if (firstEventTime == null) firstEventTime = (double) nextTime;
 			
 			sequence += identifier + "," + numberToLabel(next) + "," + sdf.format(time) + "\n";
+			size++;
+			if (size > chain.size()*10) throw new LogGenerationException("The size of the generated log is unexpectedly large. There is likely an infinite cycle in the process.");
 			previous = next;
 			next = selectNext(next);
 		}
@@ -249,9 +284,8 @@ public class MarkovGeneration {
 	 * @param nrCases the number of cases in the log to generate
 	 * @param filePath the path of the file to save the log to
 	 * @return a comma-separated execution sequence of the form caseID, activity, time
-	 * @throws FileNotFoundException 
 	 */
-	public void generateLog(int nrCases, String filePath) throws FileNotFoundException {
+	public void generateLog(int nrCases, String filePath) throws LogGenerationException, FileNotFoundException {
 		PrintWriter out = new PrintWriter(filePath);
 		out.println("Case ID,Activity,Completion Time");
 		double startTime = System.currentTimeMillis()/1000.0;
@@ -264,6 +298,26 @@ public class MarkovGeneration {
 		out.close();
 	}
 
+	/**
+	 * Returns true if a log can be generated for this generator.
+	 * False if not, in which case there is likely an infinite loop in the generator.
+	 * 
+	 * @return true or false
+	 */
+	public boolean testGenerateLog() {
+		double startTime = System.currentTimeMillis()/1000.0;
+		for (int i = 0; i < 100; i++) {
+			Object o[];
+			try {
+				o = generateSequence(startTime,Integer.toString(i));
+			} catch (LogGenerationException e) {
+				return false;
+			}
+			startTime = (Double) o[1];
+		}
+		return true;
+	}
+	
 	private String rpad(int i) {
 		return rpad(Integer.toString(i));
 	}
@@ -319,11 +373,25 @@ public class MarkovGeneration {
 	 * After the activity occurs, the next activity to occur is determined by a random copy of some existing activity.   
 	 * 
 	 * @param label the label of the activity that must be added
+	 * @throws LogGenerationException 
 	 */
-	public void addActivity(String label) {
-		//randomly select a flow
-		int sourceId = random.nextInt(nextId);
-		int targetId = random.nextInt(nextId);
+	public void addActivity(String label) throws LogGenerationException {
+		//randomly select a flow with some substantial probability
+		List<int[]> substantials = new ArrayList<int[]>();
+		for (int i = 0; i < chain.size(); i++) {
+			for (int j = 0; j < chain.size(); j++) {
+				if (chain.get(i).get(j) > 0.1) {
+					int substantial[] = new int[2];
+					substantial[0] = i;
+					substantial[1] = j;
+					substantials.add(substantial);
+				}
+			}
+		}
+		if (substantials.isEmpty()) throw new LogGenerationException("There are no sufficiently large generation moves to add an activity.");
+		int selected[] = substantials.get(random.nextInt(substantials.size()));
+		int sourceId = selected[0];
+		int targetId = selected[0];
 		
 		//create a the new activity with the given label
 		//set chain and timing properties from/to the new activity to 0.0 
@@ -499,13 +567,19 @@ public class MarkovGeneration {
 	 * 
 	 * @param f the factor that the expected number of executions per case should become
 	 * @return the actual factor that the expected number of execution per case has become
+	 * @throws LogGenerationException 
 	 */
-	public double extendByExpectedExecutions(double f) {
+	public double extendByExpectedExecutions(double f) throws LogGenerationException {
 		double e = totalExpectedExecutions();
 		double eNew = e;
+		int additions = 0;
 		while (eNew/e < f) {
 			addActivity("A" + nextId);
-			eNew = totalExpectedExecutions();			
+			eNew = totalExpectedExecutions();
+			additions ++;
+			if (additions > 1000) {
+				throw new LogGenerationException("The desired extension could not be realized after 1000 added event types. Breaking off.");
+			}
 		}
 		return eNew/e;
 	}

@@ -7,6 +7,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+import nl.tue.loggeneration.LogGenerationException;
 import nl.tue.loggeneration.MarkovGeneration;
 
 public class SandboxGeneration {
@@ -17,7 +18,7 @@ public class SandboxGeneration {
 
 	public SandboxGeneration() throws ClassNotFoundException, SQLException{
 		Class.forName("org.h2.Driver");
-		conn = DriverManager.getConnection("jdbc:h2:./tempdb", "sa", "");
+		conn = DriverManager.getConnection("jdbc:h2:./temp/tempdb", "sa", "");
 		stat = conn.createStatement();
 	}
 	
@@ -65,7 +66,46 @@ public class SandboxGeneration {
 		rs.close();
 	}
 	
-	public static void main(String args[]) throws ClassNotFoundException, SQLException, FileNotFoundException {
+	public static void generateCollection() throws ClassNotFoundException, SQLException, FileNotFoundException {
+		System.out.println("Loading Log.");
+		
+		//SandboxGeneration test = new SandboxGeneration();
+		//test.loadLog("BPI2012");
+		//test.close();
+		
+		System.out.println("Initializing generator.");		
+		
+		MarkovGeneration mc = new MarkovGeneration("./temp/tempdb","BPI2012");
+		
+		System.out.println("Done initializing.");
+		
+		/* 20 is the expected number of events per case in the BPI2012 log.
+		 * 130 is the expected number of events per case in the BPI2011 log.
+		 * For this experiment, we will extend the expected number of events:
+		 * - for the BPI2012 log
+		 * - in steps of 10 (i.e. a factor 1.5, 2, 2.5, ...)
+		 * - until we reach a factor 5 (i.e. 100 expected events per case)
+		 */
+		for (double factor = 1.0; factor < 5.2; factor += 0.5) {
+			boolean success = false;
+			while (!success) {
+				try {
+					System.out.println("Generating log for factor " + factor);
+					MarkovGeneration mcexperiment = mc.clone();
+					mcexperiment.extendByExpectedExecutions(factor);
+					String stringfactor = Double.toString(Math.round(factor*10.0));
+					mc.generateLog(1000, "./temp/experiment_1_"+stringfactor+".csv");
+					success = true;
+				} catch (LogGenerationException e) {
+					System.out.println(e.getMessage());
+					System.out.println("Retrying");
+				}
+			}
+		}
+		
+	}
+	
+	public static void main(String args[]) throws ClassNotFoundException, SQLException, FileNotFoundException, LogGenerationException {
 		/*
 		SandboxGeneration test = new SandboxGeneration();
 
@@ -73,7 +113,7 @@ public class SandboxGeneration {
 		test.printTableSize("testlog");
 		test.close();
 		*/
-		MarkovGeneration mc = new MarkovGeneration("./tempdb","testlog");
+		//MarkovGeneration mc = new MarkovGeneration("./temp/tempdb","testlog");
 		//System.out.println(MarkovGeneration.stateProbabilityToString(mc.expectedExecutions()));
 		//System.out.println(mc.totalExpectedExecutions());
 		
@@ -81,9 +121,11 @@ public class SandboxGeneration {
 		//System.out.println(mc.toString());
 		//mc.generateLog(100, "testoriginal.csv");
 		
-		mc.generateLog(100, "testoriginal.csv");
-		mc.extendByExpectedExecutions(5.0/2.2);
-		mc.generateLog(100, "testextended.csv");
+		//mc.generateLog(100, "./temp/testoriginal.csv");
+		//mc.extendByExpectedExecutions(5.0/2.2);
+		//mc.generateLog(100, "./temp/testextended.csv");
+
+		generateCollection();
 	}
 	
 }
