@@ -1,6 +1,7 @@
 package nl.tue.is.weaklyfollows.test;
 
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -105,19 +106,21 @@ public class SandboxGeneration {
 		
 	}
 
-	public static void generateCollectionByReduction() throws ClassNotFoundException, SQLException, FileNotFoundException, LogGenerationException {
+	public static void generateCollectionByReduction() throws ClassNotFoundException, SQLException, LogGenerationException, IOException {
 		
-		//System.out.println("Loading Log.");		
+		System.out.println("Loading Log.");		
 		
-		//SandboxGeneration test = new SandboxGeneration();
-		//test.loadLog("BPI2011");
-		//test.close();
+		SandboxGeneration test = new SandboxGeneration();
+		test.loadLog("BPI2011");
+		test.close();
 		
 		System.out.println("Initializing generator.");		
 		
 		MarkovGeneration mc = new MarkovGeneration("./temp/tempdb","BPI2011");
+		//mc.serialize("./temp/BPI2011Generator.ser");
 		
-		System.out.println("Done initializing.");
+		//MarkovGeneration mc = MarkovGeneration.deserialize("./temp/BPI2011Generator.ser");
+		System.out.println("Done initializing.");		
 		
 		/* 130 is the expected number of events per case in the BPI2011 log.
 		 * For this experiment, we will reduce the expected number of events:
@@ -131,12 +134,13 @@ public class SandboxGeneration {
 			double actualfactor = mcexperiment.reduceByExpectedExecutions(factor);
 			String stringfactor = Integer.toString((int) Math.round(actualfactor*100.0));
 			System.out.println("realized reduction: " + actualfactor);
+			System.out.println(mcexperiment.toString());
 			mcexperiment.generateLog(1000, "./temp/experiment_1_"+stringfactor+".csv");
 		}
 		
 	}
 	
-	public static void main(String args[]) throws ClassNotFoundException, SQLException, FileNotFoundException, LogGenerationException {
+	public static void main(String args[]) throws ClassNotFoundException, SQLException, LogGenerationException, IOException {
 		/*
 		SandboxGeneration test = new SandboxGeneration();
 
@@ -145,6 +149,7 @@ public class SandboxGeneration {
 		test.close();
 		*/
 		//MarkovGeneration mc = new MarkovGeneration("./temp/tempdb","testlog");
+		//mc.serialize("./temp/generator.ser");
 		//System.out.println(MarkovGeneration.stateProbabilityToString(mc.expectedExecutions()));
 		//System.out.println(mc.totalExpectedExecutions());
 		
@@ -157,10 +162,11 @@ public class SandboxGeneration {
 		//mc.extendByExpectedExecutions(5.0/2.2);
 		//mc.generateLog(100, "./temp/testextended.csv");
 
-		//System.out.println(mc.toString());
+		//MarkovGeneration mcp = MarkovGeneration.deserialize("./temp/generator.ser");
+		//System.out.println(mcp.toString());
 		//mc.reduceByExpectedExecutions(0.9);
 		//System.out.println(mc.toString());
-		//mc.generateLog(100, "./temp/testreduced.csv");
+		//mcp.generateLog(100, "./temp/testreduced.csv");
 		
 		generateCollectionByReduction();
 	}

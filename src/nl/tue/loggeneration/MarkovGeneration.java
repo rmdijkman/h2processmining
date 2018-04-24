@@ -1,7 +1,13 @@
 package nl.tue.loggeneration;
 
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.PrintWriter;
+import java.io.Serializable;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -15,6 +21,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 import nl.tue.util.StringPadding;
 
@@ -32,8 +40,9 @@ import nl.tue.util.StringPadding;
  * The generator generates a log with case identifiers, activity labels and completion times.
  * The generated log will - when process mined - on average produce a process model that is similar to the model that can be mined from the original log.  
  */
-public class MarkovGeneration {
+public class MarkovGeneration implements Serializable {
 
+	private static final long serialVersionUID = 1367615086944021834L;
 	/*
 	 * The actual Markov chain.
 	 * The value chain[i][j]
@@ -57,9 +66,6 @@ public class MarkovGeneration {
 	
 	//For random selection
 	Random random;
-
-	//For accessing the database
-	Connection conn;
 
 	private MarkovGeneration(){		
 		nextId = 1;
@@ -100,23 +106,6 @@ public class MarkovGeneration {
 		return result;
 	}
 	
-	private Long timeOfPreviousStartEvent(String dbFile, String tableName, String currentStartEventTime) throws SQLException {
-		Statement stat = conn.createStatement();
-		
-		ResultSet rs = stat.executeQuery("SELECT MAX(ct) FROM (SELECT MIN(CompleteTimestamp) AS ct FROM " + tableName + " GROUP BY CaseID) WHERE ct < '" + currentStartEventTime + "'");
-	
-		Long result = null;
-		if (rs.first() && (rs.getTimestamp(1) != null)) {
-			result = rs.getTimestamp(1).getTime();
-		}
-		
-		rs.close();
-		
-		stat.close();
-		
-		return result;
-	}
-
 	/**
 	 * Computes the Markov chain for the given database table.
 	 * The database must be H2. The table must have the columns CaseID, Activity, CompleteTimestamp
@@ -127,10 +116,16 @@ public class MarkovGeneration {
 	public MarkovGeneration(String dbFile, String tableName) throws SQLException, ClassNotFoundException{
 		this();		
 		Class.forName("org.h2.Driver");
-		conn = DriverManager.getConnection("jdbc:h2:" + dbFile, "sa", "");
+		Connection conn = DriverManager.getConnection("jdbc:h2:" + dbFile, "sa", "");
 		Statement stat = conn.createStatement();
 		
-		ResultSet rs = stat.executeQuery("SELECT CaseID,Activity,CompleteTimestamp FROM " + tableName + " ORDER BY CaseID,CompleteTimestamp");
+		SortedSet<Double> startTimes = new TreeSet<Double>();
+		ResultSet rs = stat.executeQuery("SELECT MIN(CompleteTimestamp) AS ct FROM " + tableName + " GROUP BY CaseID");
+		while (rs.next()) {
+			startTimes.add((double) rs.getTimestamp(1).getTime());
+		}
+		
+		rs = stat.executeQuery("SELECT CaseID,Activity,CompleteTimestamp FROM " + tableName + " ORDER BY CaseID,CompleteTimestamp");
 		String currentID = "";
 		List<List<Integer>> sequences = new LinkedList<List<Integer>>();
 		List<List<Double>> times = new LinkedList<List<Double>>();
@@ -150,11 +145,11 @@ public class MarkovGeneration {
 				currentTimes = new ArrayList<Double>();
 				currentID = caseID;
 				//this is a start event, so the previous completion time is the previous start event
-				Long t = timeOfPreviousStartEvent(dbFile, tableName, rs.getString(3));
-				if (t == null) {
+				SortedSet<Double> previousStartTimes = startTimes.headSet(completion);				
+				if (previousStartTimes.isEmpty()) {
 					previousCompletionTime = completion;
 				} else {
-					previousCompletionTime = (double) t; 
+					previousCompletionTime = previousStartTimes.last(); 
 				}
 			}
 			currentSequence.add(labelToNumber(activity));
@@ -165,7 +160,7 @@ public class MarkovGeneration {
 			sequences.add(currentSequence);
 			times.add(currentTimes);
 		}
-				
+						
 		stat.close();
 		conn.close();
 		
@@ -216,7 +211,11 @@ public class MarkovGeneration {
 		//Rework the number of times i is followed by j, into the probability that i is followed by j, put that in chain
 		for (int i = 0; i < chain.size(); i++){
 			for (int j = 0; j < chain.size(); j++){
-				timing.get(i).set(j, (totalTime[i][j]/chainCount[i][j])/1000); //in seconds 
+				if (chainCount[i][j] == 0.0) {
+					timing.get(i).set(j, 0.0);
+				} else {
+					timing.get(i).set(j, (totalTime[i][j]/chainCount[i][j])/1000.0); //in seconds
+				}				
 				chain.get(i).set(j, chainCount[i][j]/timesFollowed[i]);
 			}			
 		}
@@ -451,11 +450,16 @@ public class MarkovGeneration {
 			}
 		}
 
-		//reset the probabilities for the remaining activities
+		//reset the probabilities and times for the remaining activities
 		for (int i = 0; i < chain.size(); i++) {
 			for (int j = 0; j < chain.size(); j++) {
 				double newP = chain.get(i).get(j) + chain.get(i).get(lowestExpectationId) * chain.get(lowestExpectationId).get(j);
 				chain.get(i).set(j, newP);
+				double newTime = timing.get(i).get(j);
+				if (newTime == 0.0) {
+					newTime = timing.get(i).get(lowestExpectationId) + timing.get(lowestExpectationId).get(j);
+				}
+				timing.get(i).set(j, newTime);
 			}
 		}
 
@@ -473,8 +477,10 @@ public class MarkovGeneration {
 		//remove the activity with the least expected executions
 		for (int i = 0; i < chain.size(); i++) {
 			chain.get(i).remove(lowestExpectationId);
+			timing.get(i).remove(lowestExpectationId);
 		}
-		chain.remove(lowestExpectationId);				
+		chain.remove(lowestExpectationId);
+		timing.remove(lowestExpectationId);
 	}
 		
 	/**
@@ -617,5 +623,23 @@ public class MarkovGeneration {
 			eNew = totalExpectedExecutions();
 		}
 		return eNew/e;
+	}
+	
+	public void serialize(String filePath) throws IOException {
+		FileOutputStream fileOut = new FileOutputStream(filePath);
+	    ObjectOutputStream out = new ObjectOutputStream(fileOut);
+	    out.writeObject(this);
+	    out.close();
+	    fileOut.close();
+	}
+	
+	public static MarkovGeneration deserialize(String filePath) throws IOException, ClassNotFoundException {
+		MarkovGeneration result = null;
+		FileInputStream fileIn = new FileInputStream(filePath);
+        ObjectInputStream in = new ObjectInputStream(fileIn);
+        result = (MarkovGeneration) in.readObject();
+        in.close();
+        fileIn.close();
+        return result;
 	}
 }
