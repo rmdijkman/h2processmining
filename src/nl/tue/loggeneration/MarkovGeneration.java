@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
+import nl.tue.util.StringPadding;
+
 /**
  * Enables log generation based on a Markov chain.
  * The Markov chain is initialized based on an existing log. It describes:
@@ -56,6 +58,9 @@ public class MarkovGeneration {
 	//For random selection
 	Random random;
 
+	//For accessing the database
+	Connection conn;
+
 	private MarkovGeneration(){		
 		nextId = 1;
 		activity2Id = new HashMap<String,Integer>();
@@ -94,6 +99,22 @@ public class MarkovGeneration {
 		
 		return result;
 	}
+	
+	private long timeOfPreviousStartEvent(String dbFile, String tableName, String currentStartEventTime) throws SQLException {
+		Statement stat = conn.createStatement();
+		
+		ResultSet rs = stat.executeQuery("SELECT MAX(ct) FROM (SELECT MIN(CompleteTimestamp) AS ct FROM " + tableName + " GROUP BY CaseID) WHERE ct < '" + currentStartEventTime + "'");
+		rs = stat.executeQuery("SELECT MAX(ct) FROM (SELECT MIN(CompleteTimestamp) AS ct FROM " + tableName + " GROUP BY CaseID) WHERE ct < '" + currentStartEventTime + "'");
+		rs.first();
+		
+		long result = rs.getTimestamp(1).getTime();
+		
+		rs.close();
+		
+		stat.close();
+		
+		return result;
+	}
 
 	/**
 	 * Computes the Markov chain for the given database table.
@@ -103,10 +124,9 @@ public class MarkovGeneration {
 	 * @param tableName the name of the table in the database.
 	 */
 	public MarkovGeneration(String dbFile, String tableName) throws SQLException, ClassNotFoundException{
-		this();
-		
+		this();		
 		Class.forName("org.h2.Driver");
-		Connection conn = DriverManager.getConnection("jdbc:h2:" + dbFile, "sa", "");
+		conn = DriverManager.getConnection("jdbc:h2:" + dbFile, "sa", "");
 		Statement stat = conn.createStatement();
 		
 		ResultSet rs = stat.executeQuery("SELECT CaseID,Activity,CompleteTimestamp FROM " + tableName + " ORDER BY CaseID,CompleteTimestamp");
@@ -115,12 +135,11 @@ public class MarkovGeneration {
 		List<List<Double>> times = new LinkedList<List<Double>>();
 		List<Integer> currentSequence = null;
 		List<Double> currentTimes = new LinkedList<Double>();
-		Double previousStartTime = 0.0;
-		Double previousCompletionTime = 0.0;
+		Double previousCompletionTime = null;
 		while (rs.next()) {
 			String caseID = rs.getString(1);
 			String activity = rs.getString(2);
-			Double completion = (double) rs.getTimestamp(3).getTime();
+			Double completion = (double) rs.getTimestamp(3).getTime(); //in milliseconds
 			if (!caseID.equals(currentID)) {
 				if (currentSequence != null) {
 					sequences.add(currentSequence);
@@ -129,9 +148,12 @@ public class MarkovGeneration {
 				currentSequence = new ArrayList<Integer>();
 				currentTimes = new ArrayList<Double>();
 				currentID = caseID;
-				//this is the start event, so:
-				previousCompletionTime = previousStartTime;
-				previousStartTime = completion;
+				//this is a start event, so the previous completion time is the previous start event
+				if (previousCompletionTime == null) {
+					previousCompletionTime = completion;
+				} else {
+					previousCompletionTime = (double) timeOfPreviousStartEvent(dbFile, tableName, rs.getString(3));
+				}
 			}
 			currentSequence.add(labelToNumber(activity));
 			currentTimes.add(completion - previousCompletionTime);
@@ -250,7 +272,7 @@ public class MarkovGeneration {
 			Date time = new Date(nextTime * 1000);
 			if (firstEventTime == null) firstEventTime = (double) nextTime;
 			
-			sequence += identifier + "," + numberToLabel(next) + "," + sdf.format(time) + "\n";
+			sequence += identifier + ";" + numberToLabel(next) + ";" + sdf.format(time) + "\n";
 			size++;
 			if (size > chain.size()*100) throw new LogGenerationException("The size of the generated log is unexpectedly large. There is likely an infinite cycle in the process.");
 			previous = next;
@@ -287,7 +309,7 @@ public class MarkovGeneration {
 	 */
 	public void generateLog(int nrCases, String filePath) throws LogGenerationException, FileNotFoundException {
 		PrintWriter out = new PrintWriter(filePath);
-		out.println("Case ID,Activity,Completion Time");
+		out.println("CaseID;Activity;CompleteTimestamp");
 		double startTime = System.currentTimeMillis()/1000.0;
 		for (int i = 0; i < nrCases; i++) {
 			Object o[] = generateSequence(startTime,Integer.toString(i));
@@ -319,17 +341,7 @@ public class MarkovGeneration {
 		}
 		return true;
 	}
-	
-	private String rpad(int i) {
-		return rpad(Integer.toString(i));
-	}
-	private String rpad(long l) {
-		return rpad(Long.toString(l));
-	}
-	private String rpad(String s) {
-	    return (s + "                          ").substring(0, 10);
-	}
-	
+		
 	/**
 	 * Casts the Markov chain to a string, rounds probabilities to 2 decimals.
 	 * Rounds times to 0 decimals.
@@ -351,15 +363,15 @@ public class MarkovGeneration {
 		}
 
 		result += " \n";
-		result += rpad("");
+		result += StringPadding.rpad("", 10);
 		for (int j = 1; j < chain.size(); j++){
-			result += rpad(j);
+			result += StringPadding.rpad(j, 10);
 		}
 		result += "stop\n";
 		for (int i = 0; i < chain.size(); i++){
-			result += (i == 0)?rpad("start"):rpad(i);
+			result += (i == 0)?StringPadding.rpad("start", 10):StringPadding.rpad(i, 10);
 			for (int j = 1; j < chain.size(); j++){
-				result += rpad(Math.round(timing.get(i).get(j)));
+				result += StringPadding.rpad(Math.round(timing.get(i).get(j)), 10);
 			}
 			result += Math.round(timing.get(i).get(0));
 			result += "\n";

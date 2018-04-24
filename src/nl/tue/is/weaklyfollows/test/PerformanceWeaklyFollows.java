@@ -7,6 +7,8 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+import nl.tue.util.StringPadding;
+
 public class PerformanceWeaklyFollows {
 
 	Connection conn;
@@ -24,15 +26,13 @@ public class PerformanceWeaklyFollows {
 		conn.close();
 	}
 	
-	public void loadLog(String logName) throws SQLException{
+	public void loadLog(String folder, String logName) throws SQLException{
 		stat.execute("CREATE TABLE IF NOT EXISTS " + logName
 				+ " AS SELECT "
 				+ "CaseID,"
 				+ "Activity,"
-				+ "convert(parseDateTime(CompleteTimestamp,'yyyy/MM/dd hh:mm:ss'),TIMESTAMP) AS CompleteTimestamp,"
-				+ "Variant,"
-				+ "VariantIndex "
-				+ "FROM CSVREAD('./resources/"+logName+".csv', null, 'fieldSeparator=;');");
+				+ "convert(parseDateTime(CompleteTimestamp,'yyyy/MM/dd hh:mm:ss'),TIMESTAMP) AS CompleteTimestamp "
+				+ "FROM CSVREAD('"+folder+logName+".csv', null, 'fieldSeparator=;');");
 		stat.execute("CREATE INDEX IF NOT EXISTS CaseID_idx ON "+logName+"(CaseID)");
 		stat.execute("CREATE INDEX IF NOT EXISTS Activity_idx ON "+logName+"(Activity)");
 		stat.execute("CREATE INDEX IF NOT EXISTS CompleteTimestamp_idx ON "+logName+"(CompleteTimestamp)");
@@ -55,19 +55,22 @@ public class PerformanceWeaklyFollows {
 		System.out.println(")");
 	}
 
-	public void printTableSize(String tableName) throws SQLException{
-		System.out.println("Statistics for " + tableName + ":");
+	public int nrEvents(String tableName) throws SQLException{		
 		ResultSet rs = stat.executeQuery("SELECT COUNT(*) FROM " + tableName);
 		rs.next();
-		System.out.println("\tnumber of events:\t" + rs.getInt(1));
-		
-		rs = stat.executeQuery("SELECT COUNT(*) FROM (SELECT CaseID FROM " + tableName + " GROUP BY CaseID)");
+		return rs.getInt(1);
+	}
+	
+	public int nrCases(String tableName) throws SQLException{		
+		ResultSet rs = stat.executeQuery("SELECT COUNT(*) FROM (SELECT CaseID FROM " + tableName + " GROUP BY CaseID)");
 		rs.next();
-		System.out.println("\tnumber of cases:\t" + rs.getInt(1));
-
-		rs = stat.executeQuery("SELECT COUNT(*) FROM (SELECT Activity FROM " + tableName + " GROUP BY Activity)");
+		return rs.getInt(1);
+	}
+	
+	public int nrEventTypes(String tableName) throws SQLException{		
+		ResultSet rs = stat.executeQuery("SELECT COUNT(*) FROM (SELECT Activity FROM " + tableName + " GROUP BY Activity)");
 		rs.next();
-		System.out.println("\tnumber of event types:\t" + rs.getInt(1));
+		return rs.getInt(1);
 	}
 
 	public void printResultSet(ResultSet rs) throws SQLException{
@@ -92,31 +95,42 @@ public class PerformanceWeaklyFollows {
 		startTime = System.currentTimeMillis();
 	}
 	
-	public void printTimeTaken(){
+	public long timeTaken(){
 		long endTime = System.currentTimeMillis();
-		System.out.println("\ttime taken: " + (endTime - startTime) + " ms.");
+		return (endTime - startTime); //in milliseconds
 	}
 	
 	public static void main(String[] args) throws ClassNotFoundException, SQLException {
-		if (args.length < 1){
-			System.out.println("Provide the event log that must be loaded as an argument, e.g.: BPI2011.");
+		if (args.length < 2){
+			System.out.println("Provide the folder from which the event logs must be loaded (include trailing slash) "
+							+ "and the event logs that must be loaded as a arguments, e.g.: ./resources/ BPI2011 BPI2012.");
 			System.exit(0);
 		}
-		String logName = args[0];
+
+		System.out.println(
+				StringPadding.rpad("log name") + 
+				StringPadding.rpad("#cases") + 
+				StringPadding.rpad("#events") + 
+				StringPadding.rpad("#event types") + 
+				StringPadding.rpad("efficient(ms)") + 
+				StringPadding.rpad("old(ms)")
+			);
 		
-		PerformanceWeaklyFollows test = new PerformanceWeaklyFollows();
+		String folder = args[0];
+		
+		for (int i = 1; i < args.length; i++) {
+			String logName = args[i];
+		
+			PerformanceWeaklyFollows test = new PerformanceWeaklyFollows();
 
-		test.loadLog(logName);
-		test.printTableSize(logName);
+			test.loadLog(folder, logName);
 
-		System.out.println("Measuring the time taken to execute the weakly follows relation on the "+logName+" log ...");
-		test.startTimeMeasurement();
-		test.executeQuery("SELECT * FROM FOLLOWS(SELECT caseid,activity,completetimestamp FROM " + logName + ")");
-		test.printTimeTaken();
+			test.startTimeMeasurement();
+			test.executeQuery("SELECT * FROM FOLLOWS(SELECT caseid,activity,completetimestamp FROM " + logName + ")");
+			long efficientTime = test.timeTaken();
 
-		System.out.println("Measuring the time taken to execute a nested query to get the weakly follows relation on the "+logName+" log ...");
-		test.startTimeMeasurement();
-		test.executeQuery(
+			test.startTimeMeasurement();
+			test.executeQuery(
 				"  SELECT DISTINCT a.Activity, b.Activity "
 				+ "FROM "+logName+" a, "+logName+" b "
 				+ "WHERE a.CaseID = b.CaseID AND a.CompleteTimestamp < b.CompleteTimestamp AND "
@@ -125,9 +139,19 @@ public class PerformanceWeaklyFollows {
 				+ "    FROM "+logName+" c "
 				+ "    WHERE c.CaseID = a.CaseID AND a.CompleteTimestamp < c.CompleteTimestamp AND c.CompleteTimestamp < b.CompleteTimestamp"
 				+ "  );");
-		test.printTimeTaken();		
-
-		test.close();
+			long oldTime = test.timeTaken();
+			
+			System.out.println(
+					StringPadding.rpad(logName) + 
+					StringPadding.rpad(test.nrCases(logName)) + 
+					StringPadding.rpad(test.nrEvents(logName)) + 
+					StringPadding.rpad(test.nrEventTypes(logName)) + 
+					StringPadding.rpad(efficientTime) + 
+					StringPadding.rpad(oldTime)
+				);
+			
+			test.close();
+		}
 	}
 
 }
