@@ -252,7 +252,7 @@ public class MarkovGeneration {
 			
 			sequence += identifier + "," + numberToLabel(next) + "," + sdf.format(time) + "\n";
 			size++;
-			if (size > chain.size()*10) throw new LogGenerationException("The size of the generated log is unexpectedly large. There is likely an infinite cycle in the process.");
+			if (size > chain.size()*100) throw new LogGenerationException("The size of the generated log is unexpectedly large. There is likely an infinite cycle in the process.");
 			previous = next;
 			next = selectNext(next);
 		}
@@ -261,7 +261,7 @@ public class MarkovGeneration {
 		result[1] = firstEventTime;
 		return result;
 	}
-	
+		
 	public int selectNext(int from) {
 		double p = random.nextDouble();
 		double sumP = 0.0;
