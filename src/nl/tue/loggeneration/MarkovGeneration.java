@@ -100,14 +100,15 @@ public class MarkovGeneration {
 		return result;
 	}
 	
-	private long timeOfPreviousStartEvent(String dbFile, String tableName, String currentStartEventTime) throws SQLException {
+	private Long timeOfPreviousStartEvent(String dbFile, String tableName, String currentStartEventTime) throws SQLException {
 		Statement stat = conn.createStatement();
 		
 		ResultSet rs = stat.executeQuery("SELECT MAX(ct) FROM (SELECT MIN(CompleteTimestamp) AS ct FROM " + tableName + " GROUP BY CaseID) WHERE ct < '" + currentStartEventTime + "'");
-		rs = stat.executeQuery("SELECT MAX(ct) FROM (SELECT MIN(CompleteTimestamp) AS ct FROM " + tableName + " GROUP BY CaseID) WHERE ct < '" + currentStartEventTime + "'");
-		rs.first();
-		
-		long result = rs.getTimestamp(1).getTime();
+	
+		Long result = null;
+		if (rs.first() && (rs.getTimestamp(1) != null)) {
+			result = rs.getTimestamp(1).getTime();
+		}
 		
 		rs.close();
 		
@@ -149,10 +150,11 @@ public class MarkovGeneration {
 				currentTimes = new ArrayList<Double>();
 				currentID = caseID;
 				//this is a start event, so the previous completion time is the previous start event
-				if (previousCompletionTime == null) {
+				Long t = timeOfPreviousStartEvent(dbFile, tableName, rs.getString(3));
+				if (t == null) {
 					previousCompletionTime = completion;
 				} else {
-					previousCompletionTime = (double) timeOfPreviousStartEvent(dbFile, tableName, rs.getString(3));
+					previousCompletionTime = (double) t; 
 				}
 			}
 			currentSequence.add(labelToNumber(activity));

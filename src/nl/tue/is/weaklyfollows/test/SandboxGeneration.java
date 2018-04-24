@@ -107,11 +107,11 @@ public class SandboxGeneration {
 
 	public static void generateCollectionByReduction() throws ClassNotFoundException, SQLException, FileNotFoundException, LogGenerationException {
 		
-		System.out.println("Loading Log.");		
+		//System.out.println("Loading Log.");		
 		
-		SandboxGeneration test = new SandboxGeneration();
-		test.loadLog("BPI2011");
-		test.close();
+		//SandboxGeneration test = new SandboxGeneration();
+		//test.loadLog("BPI2011");
+		//test.close();
 		
 		System.out.println("Initializing generator.");		
 		
