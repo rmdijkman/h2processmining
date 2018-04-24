@@ -134,7 +134,6 @@ public class SandboxGeneration {
 			double actualfactor = mcexperiment.reduceByExpectedExecutions(factor);
 			String stringfactor = Integer.toString((int) Math.round(actualfactor*100.0));
 			System.out.println("realized reduction: " + actualfactor);
-			System.out.println(mcexperiment.toString());
 			mcexperiment.generateLog(1000, "./temp/experiment_1_"+stringfactor+".csv");
 		}
 		
