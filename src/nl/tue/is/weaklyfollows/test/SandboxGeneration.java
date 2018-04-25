@@ -128,7 +128,7 @@ public class SandboxGeneration {
 		 * - in steps of 10 (i.e. a factor 12/13, 11/13, 10/13, ...)
 		 * - until we reach a factor 1/13 (i.e. 10 expected events per case)
 		 */
-		for (double factor = (13.0d/13.0d); factor > (0.5d/13.0d); factor -= (0.5d/13.0d)) {
+		for (double factor = (13.0d/13.0d); factor > 0.23; factor -= (0.5d/13.0d)) {
 			MarkovGeneration mcexperiment = mc.clone();			
 			System.out.print("Creating log reduced by " + factor + " ... ");
 			double actualfactor = mcexperiment.reduceByExpectedExecutions(factor);

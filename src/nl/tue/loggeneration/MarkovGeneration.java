@@ -312,12 +312,13 @@ public class MarkovGeneration implements Serializable {
 		PrintWriter out = new PrintWriter(filePath);
 		out.println("CaseID;Activity;CompleteTimestamp");
 		double startTime = System.currentTimeMillis()/1000.0;
-		for (int i = 0; i < nrCases; i++) {
+		for (int i = 0; i < nrCases;) {
 			Object o[] = generateSequence(startTime,Integer.toString(i));
 			if (((String) o[0]).length() > 0) { //Skip empty sequences
 				startTime = (Double) o[1];
 				out.print((String) o[0]);
-			}
+				i++; //NOTE: if no cases can be generated, this will lead to an infinite loop.
+			}			
 		}
 		out.flush();
 		out.close();
