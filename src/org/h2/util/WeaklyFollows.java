@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -90,8 +91,9 @@ public class WeaklyFollows {
 				sequence = new ArrayList<LogEvent>();
 				caseId2Sequence.put(caseId, sequence);
 			}
-			//Add the event to the sequence that belongs to the case identifier of that event. 
-			sequence.add(new LogEvent(eventLog.getTimestamp(3).getTime(), eventLog.getObject(2)));
+			//Add the event to the sequence that belongs to the case identifier of that event.
+			Timestamp ts = eventLog.getTimestamp(3);
+			sequence.add(new LogEvent((ts!=null)?ts.getTime():0, eventLog.getObject(2)));
 		}
 		
 		//For each sequence that is constructed in this manner:

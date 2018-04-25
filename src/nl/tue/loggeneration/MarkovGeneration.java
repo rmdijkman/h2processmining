@@ -430,11 +430,11 @@ public class MarkovGeneration implements Serializable {
 		//the incoming flows to newActivity should be the same as the incoming flows to the target
 		//the probability of these flows should be divided by 2, because there are now 2 possibilities
 		for (int i = 0; i < chain.size()-1; i++) {
-			double toProbability = chain.get(i).get(targetId) / 2.0d;
+			double toProbability = chain.get(i).get(targetId);
 			double toTiming = timing.get(i).get(targetId);
 			
-			chain.get(i).set(targetId, toProbability);
-			chain.get(i).set(newActivityId, toProbability);
+			chain.get(i).set(targetId, toProbability*0.1);
+			chain.get(i).set(newActivityId, toProbability*0.9);
 			timing.get(i).set(newActivityId, toTiming);
 		}		
 	}

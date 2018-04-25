@@ -45,6 +45,28 @@ public class PerformanceWeaklyFollows {
 				+ "WHERE a.CaseID = b.CaseID AND a.CompleteTimestamp < b.CompleteTimestamp"
 				);
 	}
+	
+	public void createOrderedLog(String logName) throws SQLException{
+		stat.execute("CREATE TABLE IF NOT EXISTS " + logName + "ORDERED ("
+				+ "Seqnr INTEGER PRIMARY KEY AUTO_INCREMENT"
+				+ ", CaseID VARCHAR"
+				+ ", Activity VARCHAR"
+				+ ", CompleteTimestamp TIMESTAMP"
+				+ ")");
+		stat.execute("CREATE INDEX IF NOT EXISTS CaseID_idx ON "+logName+"ORDERED(CaseID)");
+		stat.execute("CREATE INDEX IF NOT EXISTS Activity_idx ON "+logName+"ORDERED(Activity)");
+		stat.execute("CREATE INDEX IF NOT EXISTS CompleteTimestamp_idx ON "+logName+"ORDERED(CompleteTimestamp)");
+		
+		stat.execute("INSERT INTO " + logName + "ORDERED (CaseId,Activity,CompleteTimestamp) SELECT * FROM " + logName + " ORDER BY CaseId, CompleteTimestamp");
+		
+		//Execute a simple query first, because otherwise the indexes do not seem to be initialized, 
+		//which causes a very slow response in the nested query.
+		stat.executeQuery(
+				"  SELECT DISTINCT a.Activity, b.Activity "
+				+ "FROM "+logName+"ORDERED a, "+logName+"ORDERED b "
+				+ "WHERE a.CaseID = b.CaseID AND a.CompleteTimestamp < b.CompleteTimestamp AND a.Seqnr = b.Seqnr - 1"
+				);
+	}
 
 	public void printTableDefinition(String tableName) throws SQLException{
 		ResultSet rs = stat.executeQuery("SELECT * FROM " + tableName);
@@ -87,7 +109,9 @@ public class PerformanceWeaklyFollows {
 			String data = sb.toString();
 			System.out.println(data);
 		}
-	}public ResultSet executeQuery(String query) throws SQLException{
+	}
+	
+	public ResultSet executeQuery(String query) throws SQLException{
 		return stat.executeQuery(query);
 	}
 	
@@ -108,12 +132,15 @@ public class PerformanceWeaklyFollows {
 		}
 
 		System.out.println(
-				StringPadding.rpad("log name") + 
-				StringPadding.rpad("#cases") + 
-				StringPadding.rpad("#events") + 
-				StringPadding.rpad("#event types") + 
-				StringPadding.rpad("efficient(ms)") + 
-				StringPadding.rpad("old(ms)")
+				"log name" + "\t" + 
+				"#cases" + "\t" + 
+				"#events" + "\t" + 
+				"#event types" + "\t" + 
+				"native(ms)" + "\t" + 
+				"sorted(ms)" + "\t" + 
+				"nested(ms)" + "\t" +
+				"actual#rels" + "\t" +				
+				"sorted#rels"
 			);
 		
 		String folder = args[0];
@@ -124,13 +151,20 @@ public class PerformanceWeaklyFollows {
 			PerformanceWeaklyFollows test = new PerformanceWeaklyFollows();
 
 			test.loadLog(folder, logName);
+			test.createOrderedLog(logName);
 
+			//Native
 			test.startTimeMeasurement();
-			test.executeQuery("SELECT * FROM FOLLOWS(SELECT caseid,activity,completetimestamp FROM " + logName + ")");
-			long efficientTime = test.timeTaken();
-
-			test.startTimeMeasurement();
-			test.executeQuery(
+			ResultSet rsNative = test.executeQuery("SELECT * FROM FOLLOWS(SELECT caseid,activity,completetimestamp FROM " + logName + ")");
+			long nativeTime = test.timeTaken();
+			long actualRels = 0;
+			if (rsNative.last()) {
+				actualRels = rsNative.getRow();
+			}
+			
+			//Nested
+			test.startTimeMeasurement();			
+			ResultSet rsNested = test.executeQuery(
 				"  SELECT DISTINCT a.Activity, b.Activity "
 				+ "FROM "+logName+" a, "+logName+" b "
 				+ "WHERE a.CaseID = b.CaseID AND a.CompleteTimestamp < b.CompleteTimestamp AND "
@@ -138,16 +172,31 @@ public class PerformanceWeaklyFollows {
 				+ "    SELECT * "
 				+ "    FROM "+logName+" c "
 				+ "    WHERE c.CaseID = a.CaseID AND a.CompleteTimestamp < c.CompleteTimestamp AND c.CompleteTimestamp < b.CompleteTimestamp"
-				+ "  );");
-			long oldTime = test.timeTaken();
-			
+				+ "  );");			
+			long nestedTime = test.timeTaken();
+
+			//Sorted
+			test.startTimeMeasurement();
+			ResultSet rsSorted = test.executeQuery(
+				"  SELECT DISTINCT a.Activity, b.Activity "
+				+ "FROM "+logName+"ORDERED a, "+logName+"ORDERED b "
+				+ "WHERE a.CaseID = b.CaseID AND a.CompleteTimestamp < b.CompleteTimestamp AND b.Seqnr = a.Seqnr + 1");
+			long sortedTime = test.timeTaken();
+			long sortedRels = 0;
+			if (rsSorted.last()) {
+				sortedRels = rsSorted.getRow();
+			}
+
 			System.out.println(
-					StringPadding.rpad(logName) + 
-					StringPadding.rpad(test.nrCases(logName)) + 
-					StringPadding.rpad(test.nrEvents(logName)) + 
-					StringPadding.rpad(test.nrEventTypes(logName)) + 
-					StringPadding.rpad(efficientTime) + 
-					StringPadding.rpad(oldTime)
+					logName + "\t" +
+					test.nrCases(logName) + "\t" + 
+					test.nrEvents(logName) + "\t" + 
+					test.nrEventTypes(logName) + "\t" + 
+					nativeTime + "\t" + 
+					sortedTime + "\t" +
+					nestedTime + "\t" +
+					actualRels + "\t" +
+					sortedRels
 				);
 			
 			test.close();
